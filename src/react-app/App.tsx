@@ -1,7 +1,9 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router";
-import { AuthProvider } from '@getmocha/users-service/react';
+import { AuthProvider } from "@/react-app/contexts/AuthContext";
 import HomePage from "@/react-app/pages/Home";
-import AuthCallbackPage from "@/react-app/pages/AuthCallback";
+import LoginPage from "@/react-app/pages/Login";
+import AdminPage from "@/react-app/pages/Admin";
+import ImageGenerationPage from "@/react-app/pages/ImageGeneration";
 
 export default function App() {
   return (
@@ -9,7 +11,9 @@ export default function App() {
       <Router>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/image-generation" element={<ImageGenerationPage />} />
         </Routes>
       </Router>
     </AuthProvider>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus, Upload, FileText, HelpCircle, FileX, X, Loader2, Check, LogIn } from 'lucide-react';
-import { useAuth } from '@getmocha/users-service/react';
+import { useAuth } from '@/react-app/contexts/AuthContext';
 
 interface UploadResponse {
   success: boolean;
@@ -9,7 +9,7 @@ interface UploadResponse {
 }
 
 export default function AdminModule() {
-  const { user, redirectToLogin } = useAuth();
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'text' | 'faq' | 'file'>('text');
   const [loading, setLoading] = useState(false);
@@ -143,13 +143,13 @@ export default function AdminModule() {
   // Show login button for unauthenticated users
   if (!user) {
     return (
-      <button
-        onClick={redirectToLogin}
+      <a
+        href="/login"
         className="fixed bottom-6 right-6 bg-zinc-800 hover:bg-zinc-700 text-white p-4 rounded-full shadow-2xl transition-all duration-200 z-50 border border-zinc-600"
         title="Fazer login para acessar recursos administrativos"
       >
         <LogIn className="w-6 h-6" />
-      </button>
+      </a>
     );
   }
 

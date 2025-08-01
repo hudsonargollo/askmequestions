@@ -1,0 +1,184 @@
+{
+  "_fs-DXIKP_VS.js": {
+    "file": "assets/fs-DXIKP_VS.js",
+    "name": "fs",
+    "imports": [
+      "src/worker/index.ts"
+    ]
+  },
+  "_index-CurXGuJF.js": {
+    "file": "assets/index-CurXGuJF.js",
+    "name": "index",
+    "isDynamicEntry": true,
+    "imports": [
+      "_fs-DXIKP_VS.js"
+    ]
+  },
+  "_index-CwLHbfIZ.js": {
+    "file": "assets/index-CwLHbfIZ.js",
+    "name": "index",
+    "isDynamicEntry": true,
+    "imports": [
+      "_fs-DXIKP_VS.js",
+      "_util-BGy8ZUe0.js",
+      "src/worker/index.ts"
+    ]
+  },
+  "_index-CxP93H2O.js": {
+    "file": "assets/index-CxP93H2O.js",
+    "name": "index",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts"
+    ]
+  },
+  "_noAuth-DjsddSW4.js": {
+    "file": "assets/noAuth-DjsddSW4.js",
+    "name": "noAuth"
+  },
+  "_package-C9_d9wHE.js": {
+    "file": "assets/package-C9_d9wHE.js",
+    "name": "package"
+  },
+  "_parseJsonBody-GuhjeIiZ.js": {
+    "file": "assets/parseJsonBody-GuhjeIiZ.js",
+    "name": "parseJsonBody",
+    "imports": [
+      "src/worker/index.ts"
+    ]
+  },
+  "_util-BGy8ZUe0.js": {
+    "file": "assets/util-BGy8ZUe0.js",
+    "name": "util",
+    "imports": [
+      "src/worker/index.ts"
+    ]
+  },
+  "node_modules/@aws-sdk/credential-provider-http/dist-es/index.js": {
+    "file": "assets/index-3djKRvo0.js",
+    "name": "index",
+    "src": "node_modules/@aws-sdk/credential-provider-http/dist-es/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts"
+    ]
+  },
+  "node_modules/@aws-sdk/credential-provider-ini/dist-es/index.js": {
+    "file": "assets/index-BLyhMcif.js",
+    "name": "index",
+    "src": "node_modules/@aws-sdk/credential-provider-ini/dist-es/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts",
+      "_index-CxP93H2O.js"
+    ],
+    "dynamicImports": [
+      "node_modules/@aws-sdk/credential-provider-http/dist-es/index.js",
+      "node_modules/@smithy/credential-provider-imds/dist-es/index.js",
+      "node_modules/@smithy/credential-provider-imds/dist-es/index.js",
+      "_index-CxP93H2O.js",
+      "node_modules/@aws-sdk/nested-clients/dist-es/submodules/sts/index.js",
+      "node_modules/@aws-sdk/credential-provider-process/dist-es/index.js",
+      "node_modules/@aws-sdk/credential-provider-sso/dist-es/index.js",
+      "node_modules/@aws-sdk/credential-provider-web-identity/dist-es/index.js"
+    ]
+  },
+  "node_modules/@aws-sdk/credential-provider-process/dist-es/index.js": {
+    "file": "assets/index-UbieY64z.js",
+    "name": "index",
+    "src": "node_modules/@aws-sdk/credential-provider-process/dist-es/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts",
+      "_index-CxP93H2O.js",
+      "_util-BGy8ZUe0.js"
+    ]
+  },
+  "node_modules/@aws-sdk/credential-provider-sso/dist-es/index.js": {
+    "file": "assets/index-BmKH90jv.js",
+    "name": "index",
+    "src": "node_modules/@aws-sdk/credential-provider-sso/dist-es/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts",
+      "_index-CxP93H2O.js"
+    ],
+    "dynamicImports": [
+      "node_modules/@aws-sdk/nested-clients/dist-es/submodules/sso-oidc/index.js",
+      "node_modules/@aws-sdk/nested-clients/dist-es/submodules/sso-oidc/index.js",
+      "node_modules/@aws-sdk/credential-provider-sso/dist-es/loadSso.js"
+    ]
+  },
+  "node_modules/@aws-sdk/credential-provider-sso/dist-es/loadSso.js": {
+    "file": "assets/loadSso-DiPfMRPj.js",
+    "name": "loadSso",
+    "src": "node_modules/@aws-sdk/credential-provider-sso/dist-es/loadSso.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts",
+      "_parseJsonBody-GuhjeIiZ.js",
+      "_noAuth-DjsddSW4.js"
+    ]
+  },
+  "node_modules/@aws-sdk/credential-provider-web-identity/dist-es/index.js": {
+    "file": "assets/index-CAnQWDjg.js",
+    "name": "index",
+    "src": "node_modules/@aws-sdk/credential-provider-web-identity/dist-es/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts"
+    ],
+    "dynamicImports": [
+      "node_modules/@aws-sdk/nested-clients/dist-es/submodules/sts/index.js"
+    ]
+  },
+  "node_modules/@aws-sdk/nested-clients/dist-es/submodules/sso-oidc/index.js": {
+    "file": "assets/index-Dmcwmrfi.js",
+    "name": "index",
+    "src": "node_modules/@aws-sdk/nested-clients/dist-es/submodules/sso-oidc/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts",
+      "_package-C9_d9wHE.js",
+      "_noAuth-DjsddSW4.js",
+      "_parseJsonBody-GuhjeIiZ.js"
+    ]
+  },
+  "node_modules/@aws-sdk/nested-clients/dist-es/submodules/sts/index.js": {
+    "file": "assets/index-CO8sP8HR.js",
+    "name": "index",
+    "src": "node_modules/@aws-sdk/nested-clients/dist-es/submodules/sts/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts",
+      "_package-C9_d9wHE.js",
+      "_noAuth-DjsddSW4.js"
+    ]
+  },
+  "node_modules/@smithy/credential-provider-imds/dist-es/index.js": {
+    "file": "assets/index-DvLm_qQK.js",
+    "name": "index",
+    "src": "node_modules/@smithy/credential-provider-imds/dist-es/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/worker/index.ts"
+    ]
+  },
+  "src/worker/index.ts": {
+    "file": "index.js",
+    "name": "index",
+    "src": "src/worker/index.ts",
+    "isEntry": true,
+    "dynamicImports": [
+      "node_modules/@smithy/credential-provider-imds/dist-es/index.js",
+      "node_modules/@aws-sdk/credential-provider-http/dist-es/index.js",
+      "node_modules/@aws-sdk/credential-provider-sso/dist-es/index.js",
+      "node_modules/@aws-sdk/credential-provider-ini/dist-es/index.js",
+      "node_modules/@aws-sdk/credential-provider-process/dist-es/index.js",
+      "node_modules/@aws-sdk/credential-provider-web-identity/dist-es/index.js",
+      "node_modules/@smithy/credential-provider-imds/dist-es/index.js",
+      "_index-CurXGuJF.js",
+      "_index-CwLHbfIZ.js"
+    ]
+  }
+}

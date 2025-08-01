@@ -1,0 +1,42 @@
+name = "knowledge-search-app"
+main = "./src/worker/index.ts"
+compatibility_date = "2025-01-30"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[assets]
+directory = "dist/client"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "knowledge-search-db"
+database_id = "1db6219f-6f57-4afb-9db3-3b7520f052d6"
+
+# Capitão Caverna Image Engine D1 Database
+[[d1_databases]]
+binding = "IMAGE_DB"
+database_name = "capitao-caverna-images-db"
+database_id = "capitao-caverna-images-db"
+
+# Capitão Caverna Image Storage R2 Bucket
+[[r2_buckets]]
+binding = "IMAGE_BUCKET"
+bucket_name = "capitao-caverna-images"
+
+[vars]
+# Add your environment variables here
+# OPENAI_API_KEY = "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"
+# MINIO_ENDPOINT = "s3.centralcaverna.com"
+# MINIO_ACCESS_KEY = "cavernacentral"
+# MINIO_SECRET_KEY = "Qwertyytrewq1773@"
+# GOOGLE_CLIENT_ID = "your-google-client-id"
+# GOOGLE_CLIENT_SECRET = "your-google-client-secret"
+
+# Capitão Caverna Image Engine - External AI Services
+# MIDJOURNEY_API_KEY = "your-midjourney-api-key"
+# DALLE_API_KEY = "your-dalle-api-key"
+# STABLE_DIFFUSION_API_KEY = "your-stable-diffusion-api-key"
+# IMAGE_GENERATION_SERVICE = "midjourney" # Options: midjourney, dalle, stable-diffusion

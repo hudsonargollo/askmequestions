@@ -1,0 +1,195 @@
+{
+  "timestamp": "2025-08-01T15:21:06.400Z",
+  "totalTests": 12,
+  "passedTests": 12,
+  "failedTests": 0,
+  "parameterCombinations": [
+    {
+      "name": "Basic Arms Crossed",
+      "params": {
+        "pose": "arms-crossed",
+        "outfit": "hoodie-sweatpants",
+        "footwear": "air-jordan-1-chicago"
+      },
+      "result": {
+        "valid": true,
+        "errors": [],
+        "warnings": []
+      },
+      "timestamp": "2025-08-01T15:21:06.426Z"
+    },
+    {
+      "name": "Dynamic Pointing",
+      "params": {
+        "pose": "pointing-forward",
+        "outfit": "tshirt-shorts",
+        "footwear": "nike-air-max-90"
+      },
+      "result": {
+        "valid": true,
+        "errors": [],
+        "warnings": []
+      },
+      "timestamp": "2025-08-01T15:21:06.427Z"
+    },
+    {
+      "name": "Relaxed Sitting",
+      "params": {
+        "pose": "sitting-on-rock",
+        "outfit": "hoodie-sweatpants",
+        "footwear": "air-jordan-11-bred"
+      },
+      "result": {
+        "valid": true,
+        "errors": [],
+        "warnings": []
+      },
+      "timestamp": "2025-08-01T15:21:06.427Z"
+    },
+    {
+      "name": "Map Presentation",
+      "params": {
+        "pose": "holding-cave-map",
+        "outfit": "hoodie-sweatpants",
+        "footwear": "air-jordan-1-chicago",
+        "prop": "cave-map"
+      },
+      "result": {
+        "valid": true,
+        "errors": [],
+        "warnings": []
+      },
+      "timestamp": "2025-08-01T15:21:06.428Z"
+    },
+    {
+      "name": "Athletic Look",
+      "params": {
+        "pose": "arms-crossed",
+        "outfit": "tshirt-shorts",
+        "footwear": "adidas-ultraboost"
+      },
+      "result": {
+        "valid": true,
+        "errors": [],
+        "warnings": []
+      },
+      "timestamp": "2025-08-01T15:21:06.428Z"
+    },
+    {
+      "name": "Windbreaker Style",
+      "params": {
+        "pose": "pointing-forward",
+        "outfit": "windbreaker-shorts",
+        "footwear": "air-jordan-11-bred"
+      },
+      "result": {
+        "valid": true,
+        "errors": [],
+        "warnings": []
+      },
+      "timestamp": "2025-08-01T15:21:06.428Z"
+    },
+    {
+      "name": "Mystical Hourglass",
+      "params": {
+        "pose": "arms-crossed",
+        "outfit": "hoodie-sweatpants",
+        "footwear": "air-jordan-1-chicago",
+        "prop": "glowing-hourglass"
+      },
+      "result": {
+        "valid": true,
+        "errors": [],
+        "warnings": []
+      },
+      "timestamp": "2025-08-01T15:21:06.428Z"
+    },
+    {
+      "name": "Ancient Totem",
+      "params": {
+        "pose": "sitting-on-rock",
+        "outfit": "hoodie-sweatpants",
+        "footwear": "nike-air-max-90",
+        "prop": "stone-totem"
+      },
+      "result": {
+        "valid": true,
+        "errors": [],
+        "warnings": []
+      },
+      "timestamp": "2025-08-01T15:21:06.428Z"
+    }
+  ],
+  "brandConsistencyResults": [
+    {
+      "testName": "Brand Elements Validation",
+      "elementsFound": [
+        "CAPITÃO CAVERNA",
+        "Confident gray and cream wolf",
+        "intense red eyes",
+        "anthropomorphic form",
+        "gray #808080",
+        "cream #F5F5DC",
+        "red eyes #DC143C"
+      ],
+      "elementsMissing": [],
+      "valid": true
+    }
+  ],
+  "frameSequenceResults": [
+    {
+      "name": "Onboarding Sequence 01A-02B",
+      "frames": [
+        {
+          "id": "01A",
+          "prompt": "CAPITÃO CAVERNA — CHARACTER FOUNDATION:\nConfident gray and cream wolf with intense red eyes, anthropomorphic form.\nAthletic humanoid build, gray #808080, cream #F5F5DC, red eyes #DC143C.\n\nSTANDARD CAVE ENVIRONMENT FOUNDATION:\nUltra-high-resolution, physically-based render of cathedral-scale granite & limestone architecture.\n\nTECHNICAL SPECIFICATIONS:\nUltra-high-resolution, physically-based render, photorealistic quality, 4K resolution minimum.\n\nCinematic quality rendering, dramatic lighting, narrative composition, enhanced detail for storytelling.\n\nNEGATIVE PROMPT: deformed hands, extra fingers, missing fingers, unrealistic anatomy, character inconsistency, poor quality\n\nEXACT LOCATION: Central cave chamber\nCHARACTER POSITIONING: Center frame, facing camera\nLIGHTING ON CHARACTER: Dramatic overhead crystal lighting\nCAMERA: Medium shot, eye level",
+          "hasCharacterConsistency": true,
+          "hasEnvironmentConsistency": true,
+          "hasFrameSpecifics": true,
+          "hasLightingSpecs": true,
+          "hasCameraSpecs": true
+        },
+        {
+          "id": "02B",
+          "prompt": "CAPITÃO CAVERNA — CHARACTER FOUNDATION:\nConfident gray and cream wolf with intense red eyes, anthropomorphic form.\nAthletic humanoid build, gray #808080, cream #F5F5DC, red eyes #DC143C.\n\nSTANDARD CAVE ENVIRONMENT FOUNDATION:\nUltra-high-resolution, physically-based render of cathedral-scale granite & limestone architecture.\n\nTECHNICAL SPECIFICATIONS:\nUltra-high-resolution, physically-based render, photorealistic quality, 4K resolution minimum.\n\nCinematic quality rendering, dramatic lighting, narrative composition, enhanced detail for storytelling.\n\nNEGATIVE PROMPT: deformed hands, extra fingers, missing fingers, unrealistic anatomy, character inconsistency, poor quality\n\nEXACT LOCATION: Near cave wall with ancient markings\nCHARACTER POSITIONING: Center frame, facing camera\nLIGHTING ON CHARACTER: Dramatic overhead crystal lighting\nCAMERA: Medium shot, eye level",
+          "hasCharacterConsistency": true,
+          "hasEnvironmentConsistency": true,
+          "hasFrameSpecifics": true,
+          "hasLightingSpecs": true,
+          "hasCameraSpecs": true
+        }
+      ],
+      "continuityElements": [],
+      "issues": [],
+      "valid": true
+    }
+  ],
+  "technicalSpecResults": [
+    {
+      "name": "Standard Generation Specs",
+      "elementsFound": [
+        "Ultra-high-resolution",
+        "physically-based render",
+        "4K resolution minimum",
+        "photorealistic quality"
+      ],
+      "elementsMissing": [],
+      "valid": true
+    },
+    {
+      "name": "Onboarding Frame Specs",
+      "elementsFound": [
+        "Cinematic quality rendering",
+        "dramatic lighting",
+        "narrative composition",
+        "enhanced detail"
+      ],
+      "elementsMissing": [],
+      "valid": true
+    }
+  ],
+  "issues": [],
+  "recommendations": [
+    "Excellent success rate - system ready for production"
+  ]
+}

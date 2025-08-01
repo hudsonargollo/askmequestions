@@ -1,0 +1,57 @@
+name = "capitao-caverna-image-engine-prod"
+main = "./src/worker/index.ts"
+compatibility_date = "2025-01-30"
+compatibility_flags = ["nodejs_compat"]
+
+# Production environment configuration
+[env.production]
+name = "capitao-caverna-image-engine-prod"
+
+# Enhanced observability for production
+[observability]
+enabled = true
+
+# Production assets configuration
+[assets]
+directory = "dist/client"
+not_found_handling = "single-page-application"
+
+# Production D1 Database with scaling configuration
+[[d1_databases]]
+binding = "IMAGE_DB"
+database_name = "capitao-caverna-images-prod"
+database_id = "capitao-caverna-images-prod"
+
+# Production R2 Bucket with CDN integration
+[[r2_buckets]]
+binding = "IMAGE_BUCKET"
+bucket_name = "capitao-caverna-images-prod"
+
+# Production environment variables (secrets should be set via wrangler secret)
+[vars]
+ENVIRONMENT = "production"
+IMAGE_GENERATION_SERVICE = "midjourney"
+MAX_CONCURRENT_GENERATIONS = "10"
+RATE_LIMIT_PER_USER_PER_HOUR = "50"
+CACHE_TTL_SECONDS = "3600"
+MAX_IMAGE_SIZE_MB = "10"
+ALLOWED_ORIGINS = "https://capitaocaverna.com,https://www.capitaocaverna.com"
+
+# Production resource limits
+[limits]
+cpu_ms = 30000
+memory_mb = 128
+
+# Production placement for optimal performance
+[placement]
+mode = "smart"
+
+# Production triggers configuration
+[[triggers]]
+crons = ["0 2 * * *"]  # Daily cleanup at 2 AM UTC
+
+# Production analytics
+[analytics_engine_datasets]
+[[analytics_engine_datasets.bindings]]
+name = "IMAGE_ANALYTICS"
+dataset = "capitao_caverna_analytics"

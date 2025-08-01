@@ -12,6 +12,10 @@ export class FileService {
   private bucketName: string;
 
   constructor(env: Env) {
+    if (!env.MINIO_ENDPOINT || !env.MINIO_ACCESS_KEY || !env.MINIO_SECRET_KEY || !env.MINIO_BUCKET_NAME) {
+      throw new Error('MinIO configuration is incomplete. Please set all MINIO_* environment variables.');
+    }
+
     this.s3Client = new S3Client({
       region: 'us-east-1', // Default region for Minio
       endpoint: env.MINIO_ENDPOINT,

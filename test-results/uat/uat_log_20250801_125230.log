@@ -1,0 +1,57 @@
+[2025-08-01 12:52:30] 🔧 Setting up test environment...
+[2025-08-01 12:52:32] 🎯 Beginning User Acceptance Test execution...
+[2025-08-01 12:52:32] 🚀 Running user_workflows tests...
+
+> knowledge-search-app@1.0.0 test
+> vitest --run --reporter=json --outputFile=test-results/uat/user_workflows_results.json src/shared/__tests__/userAcceptanceTesting.test.ts -t 'Complete User Workflows'
+
+JSON report written to /Users/hudsonargollo/askmequestions/test-results/uat/user_workflows_results.json
+[2025-08-01 12:52:34] 🚀 Running error_handling tests...
+
+> knowledge-search-app@1.0.0 test
+> vitest --run --reporter=json --outputFile=test-results/uat/error_handling_results.json src/shared/__tests__/userAcceptanceTesting.test.ts -t 'Error Handling and User Feedback'
+
+JSON report written to /Users/hudsonargollo/askmequestions/test-results/uat/error_handling_results.json
+[2025-08-01 12:52:35] 🚀 Running performance tests...
+
+> knowledge-search-app@1.0.0 test
+> vitest --run --reporter=json --outputFile=test-results/uat/performance_results.json src/shared/__tests__/userAcceptanceTesting.test.ts -t 'Performance Under Realistic Usage'
+
+JSON report written to /Users/hudsonargollo/askmequestions/test-results/uat/performance_results.json
+[2025-08-01 12:52:36] 🚀 Running usability tests...
+
+> knowledge-search-app@1.0.0 test
+> vitest --run --reporter=json --outputFile=test-results/uat/usability_results.json src/shared/__tests__/userAcceptanceTesting.test.ts -t 'Image Quality and System Usability'
+
+JSON report written to /Users/hudsonargollo/askmequestions/test-results/uat/usability_results.json
+[2025-08-01 12:52:36] 🚀 Running auth tests...
+
+> knowledge-search-app@1.0.0 test
+> vitest --run --reporter=json --outputFile=test-results/uat/auth_results.json src/shared/__tests__/userAcceptanceTesting.test.ts -t 'Authentication and Authorization'
+
+JSON report written to /Users/hudsonargollo/askmequestions/test-results/uat/auth_results.json
+[2025-08-01 12:52:37] 🚀 Running navigation tests...
+
+> knowledge-search-app@1.0.0 test
+> vitest --run --reporter=json --outputFile=test-results/uat/navigation_results.json src/shared/__tests__/userAcceptanceTesting.test.ts -t 'Navigation and User Experience'
+
+JSON report written to /Users/hudsonargollo/askmequestions/test-results/uat/navigation_results.json
+[2025-08-01 12:52:38] 🚀 Running accessibility tests...
+
+> knowledge-search-app@1.0.0 test
+> vitest --run --reporter=json --outputFile=test-results/uat/accessibility_results.json src/shared/__tests__/userAcceptanceTesting.test.ts -t 'Responsive Design and Accessibility'
+
+JSON report written to /Users/hudsonargollo/askmequestions/test-results/uat/accessibility_results.json
+[2025-08-01 12:52:39] 🚀 Running benchmarks tests...
+
+> knowledge-search-app@1.0.0 test
+> vitest --run --reporter=json --outputFile=test-results/uat/benchmarks_results.json src/shared/__tests__/userAcceptanceTesting.test.ts -t 'UAT Performance Benchmarks'
+
+JSON report written to /Users/hudsonargollo/askmequestions/test-results/uat/benchmarks_results.json
+[2025-08-01 12:52:39] 🚀 Running resilience tests...
+
+> knowledge-search-app@1.0.0 test
+> vitest --run --reporter=json --outputFile=test-results/uat/resilience_results.json src/shared/__tests__/userAcceptanceTesting.test.ts -t 'UAT Error Recovery and Resilience'
+
+JSON report written to /Users/hudsonargollo/askmequestions/test-results/uat/resilience_results.json
+[2025-08-01 12:52:40] 📊 Generating comprehensive test report...

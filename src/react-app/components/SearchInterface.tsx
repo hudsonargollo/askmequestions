@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Search, Filter, Loader2, MessageCircle, Book, Sparkles } from 'lucide-react';
+import { Search, Filter, Loader2, MessageCircle, Book, Sparkles, User } from 'lucide-react';
+import { useAuth } from '@/react-app/contexts/AuthContext';
+import UserProfile from './UserProfile';
 import type { SearchResponse, FilterOptions, KnowledgeEntry } from '../../shared/types';
 
 export default function SearchInterface() {
   const [query, setQuery] = useState('');
-  
   const [category, setCategory] = useState('');
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [filters, setFilters] = useState<FilterOptions | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     // Load Rubik font
@@ -100,6 +102,21 @@ export default function SearchInterface() {
       </div>
       
       <div className="relative z-10 container mx-auto px-6 py-16">
+        {/* User Profile or Login Button - Top Right */}
+        <div className="absolute top-6 right-6">
+          {user ? (
+            <UserProfile />
+          ) : (
+            <a
+              href="/login"
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-lg"
+            >
+              <User className="w-4 h-4" />
+              Login
+            </a>
+          )}
+        </div>
+
         {/* Welcome Header */}
         <div className="text-center mb-16">
           <div className="flex items-center justify-center mb-8">

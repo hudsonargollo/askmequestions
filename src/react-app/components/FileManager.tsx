@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileText, Trash2, Calendar, AlertCircle, Check, X } from 'lucide-react';
-import { useAuth } from '@getmocha/users-service/react';
+import { useAuth } from '@/react-app/contexts/AuthContext';
 
 interface UploadedFile {
   id: number;
