@@ -8,6 +8,10 @@ import {
   type ImageGenerationResponse,
   type GeneratedImageRecord
 } from '../shared/types';
+import { EnhancedSearchEngine, type SearchRequest } from '../shared/enhancedSearch';
+import { KnowledgeDataSeeder } from '../shared/knowledgeDataSeeder';
+import { CorrectedKnowledgeSeeder } from '../shared/correctedKnowledgeSeeder';
+import { ContextualImageEngine, type ContextualImageRequest } from '../shared/contextualImageEngine';
 import { FileService } from './fileService';
 import { 
   authMiddleware, 
@@ -374,6 +378,173 @@ app.all('/api/populate-db', async (c) => {
   return c.json({ success: true, entriesCount: KNOWLEDGE_BASE.length });
 });
 
+// Seed corrected Modo Caverna knowledge base (public - no auth required for testing)
+app.all('/api/seed-corrected-data', async (c) => {
+  const db = c.env.DB;
+  
+  try {
+    console.log('Seeding corrected Modo Caverna knowledge base...');
+    const seeder = new CorrectedKnowledgeSeeder(db);
+    await seeder.seedCorrectedData();
+    
+    return c.json({ 
+      success: true, 
+      message: 'Corrected Modo Caverna knowledge base seeded successfully',
+      methodology: 'Official 7 Levels: O Despertar, A Ruptura, O Chamado, A Descoberta, O Discernimento, A Ascensão, A Lenda',
+      philosophy: 'PROPÓSITO > FOCO > PROGRESSO',
+      community: 'Somos uma ALCATEIA DE LOBOS ativando o Modo Caverna'
+    });
+  } catch (error) {
+    console.error('Error seeding corrected data:', error);
+    return c.json({ error: 'Failed to seed corrected data', details: error.message }, 500);
+  }
+});
+
+// Enhanced data seeding endpoint (public - no auth required)
+app.all('/api/seed-enhanced-data', async (c) => {
+  const db = c.env.DB;
+
+  try {
+    // Run database migrations first
+    console.log('Running database migrations...');
+    
+    // Check if migrations table exists
+    const migrationsExist = await db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'
+    `).first();
+
+    if (!migrationsExist) {
+      // Create migrations table
+      await db.prepare(`
+        CREATE TABLE migrations (
+          id TEXT PRIMARY KEY,
+          description TEXT,
+          executed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+    }
+
+    // Check if migration already ran
+    const migrationExists = await db.prepare(`
+      SELECT id FROM migrations WHERE id = '001_enhanced_knowledge_base'
+    `).first();
+
+    if (!migrationExists) {
+      // Add new columns to knowledge_entries if they don't exist
+      const columns = [
+        'subcategory TEXT',
+        'difficulty_level TEXT DEFAULT "basico"',
+        'estimated_time INTEGER DEFAULT 5',
+        'prerequisites TEXT',
+        'related_features TEXT',
+        'tags TEXT',
+        'use_cases TEXT',
+        'troubleshooting TEXT',
+        'quick_action TEXT',
+        'step_by_step_guide TEXT',
+        'real_world_examples TEXT',
+        'advanced_tips TEXT',
+        'ui_elements_pt TEXT',
+        'philosophy_integration TEXT',
+        'user_rating REAL DEFAULT 0',
+        'popularity_score INTEGER DEFAULT 0',
+        'last_updated DATETIME DEFAULT CURRENT_TIMESTAMP',
+        'is_active BOOLEAN DEFAULT true'
+      ];
+
+      for (const column of columns) {
+        try {
+          await db.prepare(`ALTER TABLE knowledge_entries ADD COLUMN ${column}`).run();
+        } catch (error) {
+          // Column might already exist, continue
+          console.log(`Column might already exist: ${column}`);
+        }
+      }
+
+      // Create analytics tables
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS search_analytics (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          query TEXT NOT NULL,
+          user_id TEXT,
+          session_id TEXT,
+          results_count INTEGER,
+          clicked_result_id INTEGER,
+          clicked_position INTEGER,
+          user_satisfied BOOLEAN,
+          response_time_ms INTEGER,
+          search_type TEXT,
+          filters_used TEXT,
+          intent_detected TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS knowledge_feedback (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          knowledge_entry_id INTEGER NOT NULL,
+          user_id TEXT NOT NULL,
+          rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+          helpful BOOLEAN,
+          comment TEXT,
+          feedback_type TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS search_synonyms (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          term TEXT NOT NULL,
+          synonyms TEXT NOT NULL,
+          category TEXT,
+          language TEXT DEFAULT 'pt',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS search_intent_patterns (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          pattern TEXT NOT NULL,
+          intent_type TEXT NOT NULL,
+          response_template TEXT,
+          confidence_score REAL DEFAULT 1.0,
+          language TEXT DEFAULT 'pt',
+          is_active BOOLEAN DEFAULT true,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+
+      // Record migration
+      await db.prepare(`
+        INSERT INTO migrations (id, description) VALUES 
+        ('001_enhanced_knowledge_base', 'Add enhanced fields and analytics tables for knowledge base')
+      `).run();
+    }
+
+    // Seed enhanced data
+    const seeder = new KnowledgeDataSeeder(db);
+    await seeder.seedEnhancedData();
+
+    return c.json({ 
+      success: true, 
+      message: 'Enhanced knowledge base data seeded successfully',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Enhanced seeding error:', error);
+    return c.json({ 
+      success: false, 
+      error: (error as Error).message,
+      timestamp: new Date().toISOString()
+    }, 500);
+  }
+});
+
 // Get filter options
 app.get('/api/filters', async (c) => {
   const db = c.env.DB;
@@ -381,6 +552,437 @@ app.get('/api/filters', async (c) => {
   const categories = result.results.map((row: any) => row.category);
   
   return c.json({ categories });
+});
+
+// Enhanced Search endpoint with AI and analytics
+app.post('/api/search/enhanced', zValidator('json', SearchRequestSchema), async (c) => {
+  const searchRequest = c.req.valid('json');
+  const db = c.env.DB;
+  
+  try {
+    const openai = new OpenAI({
+      apiKey: c.env.OPENAI_API_KEY,
+    });
+    
+    const searchEngine = new EnhancedSearchEngine(db, openai);
+    const imageEngine = new ContextualImageEngine();
+    
+    // Get user ID if authenticated
+    const authCookie = getCookie(c, AUTH_COOKIE_NAME);
+    if (authCookie) {
+      try {
+        const session = await db.prepare('SELECT user_id FROM sessions WHERE id = ?').bind(authCookie).first();
+        if (session) {
+          searchRequest.user_id = (session as any).user_id;
+        }
+      } catch (error) {
+        console.log('Could not get user from session:', error);
+      }
+    }
+    
+    // Perform enhanced search
+    const searchResult = await searchEngine.search(searchRequest);
+    
+    // Generate contextual image if user is authenticated
+    let contextualImage = null;
+    if (searchRequest.user_id) {
+      try {
+        // Analyze search context for image generation
+        const imageContext: ContextualImageRequest = {
+          query: searchRequest.query,
+          intent: searchResult.intent as any || 'guidance',
+          emotionalTone: 'encouraging', // Default, could be enhanced with sentiment analysis
+          knowledgeCategory: searchRequest.category || 'general',
+          timeOfDay: getCurrentTimeContext(),
+          userProgress: 'progressing' // Could be determined from user activity
+        };
+        
+        // Generate contextual image parameters
+        const imageParams = imageEngine.generateContextualImage(imageContext, searchRequest.user_id);
+        
+        // For now, return the parameters - actual generation would be triggered separately
+        contextualImage = {
+          suggested_params: imageParams,
+          context: imageContext,
+          generation_ready: true
+        };
+      } catch (imageError) {
+        console.error('Contextual image generation error:', imageError);
+        // Continue without image if generation fails
+      }
+    }
+    
+    return c.json({
+      ...searchResult,
+      contextual_image: contextualImage,
+      enhanced_features: {
+        personalization: !!searchRequest.user_id,
+        contextual_images: !!contextualImage,
+        philosophy_integration: true
+      }
+    });
+    
+  } catch (error) {
+    console.error('Enhanced search error:', error);
+    return c.json({ 
+      error: 'Enhanced search failed',
+      fallback_available: true 
+    }, 500);
+  }
+});
+
+// Helper function for time context
+function getCurrentTimeContext(): 'morning' | 'afternoon' | 'evening' | 'late_night' {
+  const hour = new Date().getHours();
+  
+  if (hour >= 6 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 18) return 'afternoon';
+  if (hour >= 18 && hour < 22) return 'evening';
+  return 'late_night';
+}
+
+// Original search endpoint for backward compatibility
+app.post('/api/search', zValidator('json', SearchRequestSchema), async (c) => {
+  const { query, language = 'pt', category } = c.req.valid('json');
+  const db = c.env.DB;
+
+  try {
+    const openai = new OpenAI({
+      apiKey: c.env.OPENAI_API_KEY,
+    });
+
+    // Enhanced search with better filtering and AI response
+    let searchQuery = `
+      SELECT 
+        id, feature_module, functionality, description, ui_elements,
+        user_questions_en, user_questions_pt, category, content_text,
+        subcategory, difficulty_level, estimated_time, quick_action,
+        ui_elements_pt, troubleshooting, philosophy_integration
+      FROM knowledge_entries 
+      WHERE is_active = true
+    `;
+    
+    const params: any[] = [];
+    
+    if (category) {
+      searchQuery += ` AND category = ?`;
+      params.push(category);
+    }
+    
+    // Enhanced search logic with multiple matching strategies
+    const searchTerms = query.toLowerCase().split(' ').filter(term => term.length > 2);
+    
+    if (searchTerms.length > 0) {
+      const searchConditions = searchTerms.map(() => `
+        (LOWER(feature_module) LIKE ? OR 
+         LOWER(functionality) LIKE ? OR 
+         LOWER(description) LIKE ? OR 
+         LOWER(content_text) LIKE ? OR
+         LOWER(user_questions_pt) LIKE ? OR
+         LOWER(quick_action) LIKE ?)
+      `).join(' AND ');
+      
+      searchQuery += ` AND (${searchConditions})`;
+      
+      searchTerms.forEach(term => {
+        const searchTerm = `%${term}%`;
+        params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      });
+    }
+    
+    searchQuery += ` ORDER BY 
+      CASE 
+        WHEN LOWER(functionality) LIKE ? THEN 1
+        WHEN LOWER(feature_module) LIKE ? THEN 2
+        WHEN LOWER(quick_action) LIKE ? THEN 3
+        ELSE 4
+      END,
+      popularity_score DESC,
+      user_rating DESC
+      LIMIT 10`;
+    
+    const exactMatch = `%${query.toLowerCase()}%`;
+    params.push(exactMatch, exactMatch, exactMatch);
+
+    const response = await db.prepare(searchQuery).bind(...params).all();
+    
+    if (!response.results || response.results.length === 0) {
+      return c.json({
+        answer: `Não encontrei informações específicas sobre "${query}" na base de conhecimento. Tente reformular sua pergunta ou use termos mais gerais.`,
+        searchResults: { results: [], total_results: 0, response_time_ms: 0 },
+        intent: 'not_found',
+        suggestions: ['como fazer login', 'desafio caverna', 'configurar rituais']
+      });
+    }
+
+    // Generate AI response based on found entries
+    const context = response.results.slice(0, 3).map((entry: any) => 
+      `Funcionalidade: ${entry.feature_module} - ${entry.functionality}\n` +
+      `Ação Rápida: ${entry.quick_action}\n` +
+      `Elementos da Interface: ${entry.ui_elements_pt ? JSON.parse(entry.ui_elements_pt).join(', ') : entry.ui_elements}\n` +
+      `Conteúdo: ${entry.content_text}\n` +
+      (entry.troubleshooting ? `Solução de Problemas: ${entry.troubleshooting}\n` : '') +
+      (entry.philosophy_integration ? `Filosofia Modo Caverna: ${entry.philosophy_integration}\n` : '')
+    ).join('\n---\n');
+
+    const systemPrompt = `Você é o Capitão Caverna, assistente oficial do Modo Caverna, uma plataforma de transformação pessoal. 
+    Responda com base na documentação fornecida, mantendo o tom motivacional e a filosofia da "alcatéia" (pack de lobos).
+    Use elementos da interface em português e seja prático e direto.
+    Se for uma pergunta "como fazer", forneça passos claros.
+    Se for um problema, foque nas soluções mais prováveis primeiro.
+    Mantenha o espírito de transformação e superação do Modo Caverna.`;
+
+    const userPrompt = `Pergunta: "${query}"\n\nDocumentação do Modo Caverna:\n${context}`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 600,
+    });
+
+    const aiAnswer = completion.choices[0].message.content || 
+      'Não consegui gerar uma resposta baseada na documentação disponível.';
+
+    return c.json({
+      answer: aiAnswer,
+      searchResults: searchResponse,
+      intent: searchResponse.intent,
+      suggestions: searchResponse.suggestions
+    });
+
+  } catch (error) {
+    console.error('Enhanced search error:', error);
+    return c.json({
+      answer: 'Ocorreu um erro ao processar sua pergunta. Tente novamente em alguns instantes.',
+      searchResults: { results: [], intent: 'error', suggestions: [], total_results: 0, response_time_ms: 0 },
+      intent: 'error',
+      suggestions: []
+    }, 500);
+  }
+});
+
+// Feedback endpoint
+app.post('/api/knowledge/:id/feedback', authMiddleware, async (c) => {
+  const knowledgeId = parseInt(c.req.param('id'));
+  const { rating, helpful, comment, feedback_type } = await c.req.json();
+  const user = c.get('user');
+  
+  if (!knowledgeId || isNaN(knowledgeId)) {
+    return c.json({ error: 'Invalid knowledge entry ID' }, 400);
+  }
+
+  if (rating && (rating < 1 || rating > 5)) {
+    return c.json({ error: 'Rating must be between 1 and 5' }, 400);
+  }
+
+  try {
+    const db = c.env.DB;
+    const openai = new OpenAI({
+      apiKey: c.env.OPENAI_API_KEY,
+    });
+    
+    const searchEngine = new EnhancedSearchEngine(db, openai);
+    
+    await searchEngine.submitFeedback({
+      knowledge_entry_id: knowledgeId,
+      user_id: user.id,
+      rating,
+      helpful,
+      comment,
+      feedback_type: feedback_type || 'rating'
+    });
+
+    return c.json({ success: true, message: 'Feedback enviado com sucesso!' });
+  } catch (error) {
+    console.error('Feedback submission error:', error);
+    return c.json({ error: 'Erro ao enviar feedback' }, 500);
+  }
+});
+
+// Analytics endpoints for admins
+app.get('/api/admin/knowledge/analytics', authMiddleware, async (c) => {
+  const user = c.get('user');
+  if (!user.isAdmin) {
+    return c.json({ error: 'Acesso negado. Apenas administradores podem acessar analytics.' }, 403);
+  }
+
+  try {
+    const db = c.env.DB;
+
+    // Get search analytics for last 30 days
+    const searchStats = await db.prepare(`
+      SELECT 
+        COUNT(*) as total_searches,
+        COUNT(DISTINCT user_id) as unique_users,
+        AVG(response_time_ms) as avg_response_time,
+        COUNT(CASE WHEN user_satisfied = true THEN 1 END) as satisfied_searches,
+        COUNT(CASE WHEN user_satisfied = false THEN 1 END) as unsatisfied_searches
+      FROM search_analytics 
+      WHERE created_at >= datetime('now', '-30 days')
+    `).first();
+
+    // Get popular queries
+    const popularQueries = await db.prepare(`
+      SELECT query, COUNT(*) as frequency, intent_detected
+      FROM search_analytics 
+      WHERE created_at >= datetime('now', '-30 days')
+      GROUP BY query
+      ORDER BY frequency DESC
+      LIMIT 10
+    `).all();
+
+    // Get content performance
+    const contentPerformance = await db.prepare(`
+      SELECT 
+        ke.id,
+        ke.feature_module || ' - ' || ke.functionality as title,
+        ke.category,
+        ke.user_rating,
+        ke.popularity_score,
+        COUNT(kf.id) as feedback_count,
+        AVG(kf.rating) as avg_feedback_rating
+      FROM knowledge_entries ke
+      LEFT JOIN knowledge_feedback kf ON ke.id = kf.knowledge_entry_id
+      WHERE ke.is_active = true
+      GROUP BY ke.id
+      ORDER BY ke.popularity_score DESC, ke.user_rating DESC
+      LIMIT 15
+    `).all();
+
+    // Get recent feedback
+    const recentFeedback = await db.prepare(`
+      SELECT 
+        kf.*,
+        ke.feature_module || ' - ' || ke.functionality as entry_title
+      FROM knowledge_feedback kf
+      JOIN knowledge_entries ke ON kf.knowledge_entry_id = ke.id
+      ORDER BY kf.created_at DESC
+      LIMIT 20
+    `).all();
+
+    // Get intent distribution
+    const intentDistribution = await db.prepare(`
+      SELECT 
+        intent_detected,
+        COUNT(*) as count,
+        ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM search_analytics WHERE created_at >= datetime('now', '-30 days')), 2) as percentage
+      FROM search_analytics 
+      WHERE created_at >= datetime('now', '-30 days') AND intent_detected IS NOT NULL
+      GROUP BY intent_detected
+      ORDER BY count DESC
+    `).all();
+
+    return c.json({
+      search_stats: {
+        total_searches: (searchStats as any)?.total_searches || 0,
+        unique_users: (searchStats as any)?.unique_users || 0,
+        avg_response_time: Math.round((searchStats as any)?.avg_response_time || 0),
+        satisfaction_rate: (searchStats as any)?.total_searches > 0 
+          ? Math.round(((searchStats as any).satisfied_searches / (searchStats as any).total_searches) * 100) 
+          : 0,
+        satisfied_searches: (searchStats as any)?.satisfied_searches || 0,
+        unsatisfied_searches: (searchStats as any)?.unsatisfied_searches || 0
+      },
+      popular_queries: popularQueries.results || [],
+      content_performance: contentPerformance.results || [],
+      recent_feedback: recentFeedback.results || [],
+      intent_distribution: intentDistribution.results || [],
+      generated_at: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Analytics error:', error);
+    return c.json({ error: 'Erro ao carregar analytics' }, 500);
+  }
+});
+
+// Get popular content endpoint
+app.get('/api/knowledge/popular', async (c) => {
+  try {
+    const db = c.env.DB;
+    
+    const results = await db.prepare(`
+      SELECT 
+        id,
+        feature_module || ' - ' || functionality as title,
+        category,
+        subcategory,
+        difficulty_level,
+        estimated_time,
+        quick_action,
+        ui_elements_pt,
+        user_rating,
+        popularity_score
+      FROM knowledge_entries 
+      WHERE is_active = true
+      ORDER BY popularity_score DESC, user_rating DESC
+      LIMIT 10
+    `).all();
+
+    const popularEntries = results.results.map((entry: any) => ({
+      ...entry,
+      ui_elements_pt: entry.ui_elements_pt ? JSON.parse(entry.ui_elements_pt) : []
+    }));
+
+    return c.json({ popular_entries: popularEntries });
+  } catch (error) {
+    console.error('Popular content error:', error);
+    return c.json({ error: 'Erro ao carregar conteúdo popular' }, 500);
+  }
+});
+
+// Search suggestions endpoint
+app.get('/api/search/suggestions', async (c) => {
+  try {
+    const db = c.env.DB;
+    
+    // Get most common search terms from last 7 days
+    const suggestions = await db.prepare(`
+      SELECT query, COUNT(*) as frequency
+      FROM search_analytics 
+      WHERE created_at >= datetime('now', '-7 days')
+        AND results_count > 0
+      GROUP BY query
+      ORDER BY frequency DESC
+      LIMIT 8
+    `).all();
+
+    // Add some default suggestions if not enough data
+    const defaultSuggestions = [
+      'como fazer login',
+      'desafio caverna',
+      'configurar rituais',
+      'comunidade',
+      'recuperar senha',
+      'central caverna'
+    ];
+
+    const allSuggestions = [
+      ...(suggestions.results?.map((s: any) => s.query) || []),
+      ...defaultSuggestions
+    ];
+
+    // Remove duplicates and limit to 8
+    const uniqueSuggestions = [...new Set(allSuggestions)].slice(0, 8);
+
+    return c.json({ suggestions: uniqueSuggestions });
+  } catch (error) {
+    console.error('Suggestions error:', error);
+    return c.json({ 
+      suggestions: [
+        'como fazer login',
+        'desafio caverna',
+        'configurar rituais',
+        'comunidade',
+        'recuperar senha',
+        'central caverna'
+      ]
+    });
+  }
 });
 
 // Search endpoint
@@ -1361,7 +1963,7 @@ app.post('/api/v1/images/generate', authMiddleware, zValidator('json', ImageGene
     const contentSafety = await securityManager.validatePromptContent(prompt);
     if (!contentSafety.safe) {
       await securityManager.logSecurityEvent({
-        userId: user.user_id,
+        userId: user.id,
         ipAddress: c.req.header('CF-Connecting-IP') || 'unknown',
         userAgent: c.req.header('User-Agent') || 'unknown',
         action: 'content_safety_violation',
@@ -2206,7 +2808,7 @@ app.get('/api/v1/admin/security/report', authMiddleware, async (c) => {
   const user = c.get('user');
   
   // Check admin permissions
-  if (user.role !== 'admin') {
+  if (!user.isAdmin) {
     return c.json({ error: 'Insufficient permissions' }, 403);
   }
   
@@ -2233,7 +2835,7 @@ app.get('/api/v1/admin/security/audit', authMiddleware, async (c) => {
   const user = c.get('user');
   
   // Check admin permissions
-  if (user.role !== 'admin') {
+  if (!user.isAdmin) {
     return c.json({ error: 'Insufficient permissions' }, 403);
   }
   

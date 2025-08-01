@@ -113,8 +113,8 @@ export class SecurityManager {
     type: 'user' | 'ip' | 'global'
   ): Promise<RateLimitResult> {
     const now = Math.floor(Date.now() / 1000);
-    const config = this.config.rateLimits[type];
-    const key = `rate_limit:${type}:${identifier}`;
+    const configKey = type === 'user' ? 'perUser' : type === 'ip' ? 'perIP' : 'global';
+    const config = this.config.rateLimits[configKey];
     
     try {
       // Get current count from database

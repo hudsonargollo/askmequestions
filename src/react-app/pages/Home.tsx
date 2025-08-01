@@ -1,6 +1,6 @@
 import { useAuth } from '@/react-app/contexts/AuthContext';
 import { Link } from 'react-router';
-import SearchInterface from '../components/SearchInterface';
+import EnhancedSearchInterface from '../components/EnhancedSearchInterface';
 import AdminModule from '../components/AdminModule';
 import FileManager from '../components/FileManager';
 
@@ -37,7 +37,7 @@ export default function Home() {
         )}
       </div>
       
-      <SearchInterface />
+      <EnhancedSearchInterface />
       
       {/* File Manager for authenticated users */}
       {user && (
