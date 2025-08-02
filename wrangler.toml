@@ -16,15 +16,17 @@ database_name = "knowledge-search-db"
 database_id = "1db6219f-6f57-4afb-9db3-3b7520f052d6"
 
 # Capitão Caverna Image Engine D1 Database
-[[d1_databases]]
-binding = "IMAGE_DB"
-database_name = "capitao-caverna-images-db"
-database_id = "capitao-caverna-images-db"
+# Note: This database needs to be created in Cloudflare dashboard
+# [[d1_databases]]
+# binding = "IMAGE_DB"
+# database_name = "capitao-caverna-images-db"
+# database_id = "your-image-db-uuid-here"
 
 # Capitão Caverna Image Storage R2 Bucket
-[[r2_buckets]]
-binding = "IMAGE_BUCKET"
-bucket_name = "capitao-caverna-images"
+# Note: This bucket needs to be created in Cloudflare dashboard
+# [[r2_buckets]]
+# binding = "IMAGE_BUCKET"
+# bucket_name = "capitao-caverna-images"
 
 [vars]
 # Add your environment variables here

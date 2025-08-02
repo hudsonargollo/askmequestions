@@ -35,6 +35,20 @@ type Variables = {
   user: User;
 };
 
+// Helper function to check if image services are available
+function isImageServiceAvailable(env: any): boolean {
+  return !!(env.IMAGE_DB && env.IMAGE_BUCKET);
+}
+
+// Helper function to return image service unavailable error
+function imageServiceUnavailableResponse() {
+  return Response.json({
+    success: false,
+    error: 'Image generation service is not configured. Please contact administrator.',
+    code: 'IMAGE_SERVICE_UNAVAILABLE'
+  }, { status: 503 });
+}
+
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // Apply security middleware to all routes
@@ -1559,6 +1573,11 @@ app.get('/api/v1/images/user/:userId', authMiddleware, async (c) => {
 
 // Delete generated image (admin only)
 app.delete('/api/v1/images/:imageId', authMiddleware, adminMiddleware, async (c) => {
+  // Check if image services are available
+  if (!isImageServiceAvailable(c.env)) {
+    return imageServiceUnavailableResponse();
+  }
+  
   const imageId = c.req.param('imageId');
   
   try {
@@ -1926,6 +1945,11 @@ const checkRateLimit = (userId: string): { allowed: boolean; resetTime?: number 
 
 // Main image generation endpoint
 app.post('/api/v1/images/generate', authMiddleware, zValidator('json', ImageGenerationRequestSchema), async (c) => {
+  // Check if image services are available
+  if (!isImageServiceAvailable(c.env)) {
+    return imageServiceUnavailableResponse();
+  }
+  
   const user = c.get('user');
   const { params } = c.req.valid('json');
   
@@ -2183,6 +2207,11 @@ app.get('/api/v1/images/user/:userId', authMiddleware, async (c) => {
 
 // Delete user image endpoint
 app.delete('/api/v1/images/:imageId', authMiddleware, async (c) => {
+  // Check if image services are available
+  if (!isImageServiceAvailable(c.env)) {
+    return imageServiceUnavailableResponse();
+  }
+  
   const user = c.get('user');
   const imageId = c.req.param('imageId');
   
@@ -2218,6 +2247,11 @@ app.delete('/api/v1/images/:imageId', authMiddleware, async (c) => {
 
 // Bulk operations for admin
 app.post('/api/v1/admin/images/bulk-delete', authMiddleware, adminMiddleware, async (c) => {
+  // Check if image services are available
+  if (!isImageServiceAvailable(c.env)) {
+    return imageServiceUnavailableResponse();
+  }
+  
   const body = await c.req.json();
   const { imageIds } = body;
   
@@ -2837,6 +2871,11 @@ app.get('/api/v1/admin/security/audit', authMiddleware, async (c) => {
   // Check admin permissions
   if (!user.isAdmin) {
     return c.json({ error: 'Insufficient permissions' }, 403);
+  }
+  
+  // Check if image services are available
+  if (!isImageServiceAvailable(c.env)) {
+    return imageServiceUnavailableResponse();
   }
   
   try {
