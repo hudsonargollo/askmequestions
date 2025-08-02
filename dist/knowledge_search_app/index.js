@@ -12856,6 +12856,734 @@ z$1.object({
     props: z$1.array(z$1.string()).optional()
   }).optional()
 });
+const SYNONYM_MAP = {
+  "login": ["entrar", "acessar", "signin", "access", "autenticacao", "autenticação"],
+  "desafio": ["challenge", "40-dias", "transformacao", "transformação", "jornada"],
+  "ritual": ["rotina", "habito", "hábito", "routine", "manhã", "noite"],
+  "agenda": ["calendario", "calendário", "schedule", "compromisso", "evento"],
+  "comunidade": ["feed", "social", "alcateia", "alcatéia", "lobos", "wolves"],
+  "forja": ["fitness", "treino", "workout", "exercicio", "exercício", "saude", "saúde"],
+  "metas": ["objetivos", "goals", "targets", "alvos", "propositos", "propósitos"],
+  "manifestacao": ["manifestação", "lei-da-atracao", "lei-da-atração", "visualizacao", "visualização"],
+  "produtividade": ["pomodoro", "tarefas", "foco", "flow", "concentracao", "concentração"],
+  "sequencia": ["sequência", "streak", "dias-consecutivos", "consistencia", "consistência"]
+};
+const INTENT_PATTERNS = {
+  "how_to": ["como", "how", "tutorial", "passo a passo", "guia"],
+  "what_is": ["o que é", "what is", "definição", "explicar"],
+  "troubleshooting": ["não funciona", "erro", "problema", "bug", "falha", "not working", "error", "problem"],
+  "where_find": ["onde", "where", "encontrar", "localizar", "acessar"]
+};
+class EnhancedSearchEngine {
+  constructor(db, openai) {
+    this.db = db;
+    this.openai = openai;
+  }
+  async search(request2) {
+    const startTime = Date.now();
+    try {
+      const detectedIntent = this.recognizeIntent(request2.query, request2.language || "pt");
+      const expandedQuery = this.expandSynonyms(request2.query);
+      const userPreferences = request2.user_id ? await this.getUserPreferences(request2.user_id) : null;
+      const results = await this.performSearch(expandedQuery, request2.filters, userPreferences);
+      const suggestions = await this.generateSuggestions(request2.query, results);
+      await this.logSearchAnalytics({
+        query: request2.query,
+        user_id: request2.user_id,
+        results_count: results.length,
+        response_time_ms: Date.now() - startTime,
+        intent_detected: detectedIntent,
+        filters_used: request2.filters
+      });
+      return {
+        results: results.slice(0, 20),
+        // Limit to top 20 results
+        intent: detectedIntent,
+        suggestions,
+        total_results: results.length,
+        response_time_ms: Date.now() - startTime
+      };
+    } catch (error) {
+      console.error("Enhanced search error:", error);
+      const basicResults = await this.basicSearch(request2.query, request2.filters);
+      return {
+        results: basicResults,
+        intent: "general",
+        suggestions: [],
+        total_results: basicResults.length,
+        response_time_ms: Date.now() - startTime
+      };
+    }
+  }
+  recognizeIntent(query, _language = "pt") {
+    const queryLower = query.toLowerCase();
+    for (const [intent, patterns] of Object.entries(INTENT_PATTERNS)) {
+      for (const pattern of patterns) {
+        if (queryLower.includes(pattern)) {
+          return intent;
+        }
+      }
+    }
+    return "general";
+  }
+  expandSynonyms(query) {
+    let expandedQuery = query;
+    const queryLower = query.toLowerCase();
+    for (const [term, synonyms] of Object.entries(SYNONYM_MAP)) {
+      const regex = new RegExp(`\\b${term}\\b`, "gi");
+      if (regex.test(queryLower)) {
+        expandedQuery += " " + synonyms.join(" ");
+      }
+      for (const synonym of synonyms) {
+        const synonymRegex = new RegExp(`\\b${synonym}\\b`, "gi");
+        if (synonymRegex.test(queryLower)) {
+          expandedQuery += " " + term + " " + synonyms.filter((s2) => s2 !== synonym).join(" ");
+          break;
+        }
+      }
+    }
+    return expandedQuery;
+  }
+  async getUserPreferences(userId) {
+    try {
+      const result = await this.db.prepare(`
+        SELECT * FROM user_search_preferences WHERE user_id = ?
+      `).bind(userId).first();
+      return result ? {
+        preferred_categories: JSON.parse(result.preferred_categories || "[]"),
+        difficulty_preference: result.difficulty_preference,
+        search_history: JSON.parse(result.search_history || "[]"),
+        personalization_data: JSON.parse(result.personalization_data || "{}")
+      } : null;
+    } catch (error) {
+      console.error("Error getting user preferences:", error);
+      return null;
+    }
+  }
+  async performSearch(query, filters, userPreferences) {
+    let sql = `
+      SELECT * FROM knowledge_entries 
+      WHERE is_active = true AND (
+        content_text LIKE ? OR 
+        user_questions_pt LIKE ? OR 
+        user_questions_en LIKE ? OR
+        tags LIKE ? OR
+        troubleshooting LIKE ?
+      )
+    `;
+    const searchTerm = `%${query}%`;
+    const params = [searchTerm, searchTerm, searchTerm, searchTerm, searchTerm];
+    if (filters?.category) {
+      sql += ` AND category = ?`;
+      params.push(filters.category);
+    }
+    if (filters?.difficulty) {
+      sql += ` AND difficulty_level = ?`;
+      params.push(filters.difficulty);
+    }
+    if (filters?.estimated_time) {
+      sql += ` AND estimated_time <= ?`;
+      params.push(filters.estimated_time);
+    }
+    if (userPreferences?.preferred_categories?.length > 0) {
+      const categoryBoost = userPreferences.preferred_categories.map(() => "category = ?").join(" OR ");
+      sql += ` ORDER BY CASE WHEN ${categoryBoost} THEN 1 ELSE 2 END, popularity_score DESC, user_rating DESC`;
+      params.push(...userPreferences.preferred_categories);
+    } else {
+      sql += ` ORDER BY popularity_score DESC, user_rating DESC`;
+    }
+    try {
+      const results = await this.db.prepare(sql).bind(...params).all();
+      return results.results.map((row) => ({
+        id: row.id,
+        title: `${row.feature_module} - ${row.functionality}`,
+        content_text: row.content_text,
+        category: row.category,
+        subcategory: row.subcategory || row.category,
+        difficulty_level: row.difficulty_level || "basico",
+        estimated_time: row.estimated_time || 5,
+        quick_action: row.quick_action || "Ver detalhes",
+        ui_elements_pt: this.parseJsonSafely(row.ui_elements_pt, []),
+        troubleshooting: row.troubleshooting,
+        step_by_step_guide: this.parseJsonSafely(row.step_by_step_guide, []),
+        philosophy_integration: row.philosophy_integration,
+        relevance_score: this.calculateRelevanceScore(query, row),
+        match_type: this.determineMatchType(query, row)
+      }));
+    } catch (error) {
+      console.error("Search error:", error);
+      return [];
+    }
+  }
+  async basicSearch(query, filters) {
+    let sql = `
+      SELECT * FROM knowledge_entries 
+      WHERE content_text LIKE ? OR user_questions_pt LIKE ?
+    `;
+    const searchTerm = `%${query}%`;
+    const params = [searchTerm, searchTerm];
+    if (filters?.category) {
+      sql += ` AND category = ?`;
+      params.push(filters.category);
+    }
+    sql += ` ORDER BY id LIMIT 10`;
+    try {
+      const results = await this.db.prepare(sql).bind(...params).all();
+      return results.results.map((row) => ({
+        id: row.id,
+        title: `${row.feature_module} - ${row.functionality}`,
+        content_text: row.content_text,
+        category: row.category,
+        subcategory: row.subcategory || row.category,
+        difficulty_level: row.difficulty_level || "basico",
+        estimated_time: row.estimated_time || 5,
+        quick_action: row.quick_action || "Ver detalhes",
+        ui_elements_pt: this.parseJsonSafely(row.ui_elements_pt, []),
+        troubleshooting: row.troubleshooting,
+        step_by_step_guide: this.parseJsonSafely(row.step_by_step_guide, []),
+        philosophy_integration: row.philosophy_integration,
+        relevance_score: 0.5,
+        match_type: "exact"
+      }));
+    } catch (error) {
+      console.error("Basic search error:", error);
+      return [];
+    }
+  }
+  parseJsonSafely(jsonString, defaultValue) {
+    if (!jsonString) return defaultValue;
+    try {
+      return JSON.parse(jsonString);
+    } catch {
+      return defaultValue;
+    }
+  }
+  calculateRelevanceScore(query, row) {
+    let score = 0;
+    const queryLower = query.toLowerCase();
+    if (row.functionality.toLowerCase().includes(queryLower)) score += 2;
+    if (row.content_text.toLowerCase().includes(queryLower)) score += 1;
+    if (row.user_questions_pt && row.user_questions_pt.toLowerCase().includes(queryLower)) score += 1.5;
+    if (row.user_rating) score += row.user_rating * 0.1;
+    if (row.popularity_score) score += Math.log(row.popularity_score + 1) * 0.1;
+    return Math.min(score, 5);
+  }
+  determineMatchType(query, row) {
+    const queryLower = query.toLowerCase();
+    if (row.functionality.toLowerCase().includes(queryLower) || row.content_text.toLowerCase().includes(queryLower)) {
+      return "exact";
+    }
+    for (const synonyms of Object.values(SYNONYM_MAP)) {
+      if (synonyms.some((synonym) => queryLower.includes(synonym))) {
+        return "synonym";
+      }
+    }
+    return "semantic";
+  }
+  async generateSuggestions(query, results) {
+    const suggestions = [];
+    const categories = [...new Set(results.map((r2) => r2.category))];
+    if (categories.length > 0) {
+      suggestions.push(...categories.slice(0, 3));
+    }
+    const queryLower = query.toLowerCase();
+    if (queryLower.includes("login") || queryLower.includes("entrar")) {
+      suggestions.push("recuperar senha", "criar conta", "problemas de acesso");
+    }
+    if (queryLower.includes("desafio") || queryLower.includes("challenge")) {
+      suggestions.push("configurar rituais", "acompanhar progresso", "comunidade");
+    }
+    return [...new Set(suggestions)].slice(0, 5);
+  }
+  async logSearchAnalytics(data) {
+    try {
+      await this.db.prepare(`
+        INSERT INTO search_analytics 
+        (query, user_id, results_count, response_time_ms, intent_detected, filters_used)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        data.query,
+        data.user_id || null,
+        data.results_count,
+        data.response_time_ms,
+        data.intent_detected,
+        JSON.stringify(data.filters_used || {})
+      ).run();
+    } catch (error) {
+      console.error("Error logging search analytics:", error);
+    }
+  }
+  async submitFeedback(data) {
+    try {
+      await this.db.prepare(`
+        INSERT INTO knowledge_feedback 
+        (knowledge_entry_id, user_id, rating, helpful, comment, feedback_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        data.knowledge_entry_id,
+        data.user_id,
+        data.rating || null,
+        data.helpful || null,
+        data.comment || null,
+        data.feedback_type || "rating"
+      ).run();
+      if (data.rating) {
+        const avgResult = await this.db.prepare(`
+          SELECT AVG(rating) as avg_rating, COUNT(*) as total_ratings
+          FROM knowledge_feedback 
+          WHERE knowledge_entry_id = ? AND rating IS NOT NULL
+        `).bind(data.knowledge_entry_id).first();
+        if (avgResult) {
+          await this.db.prepare(`
+            UPDATE knowledge_entries 
+            SET user_rating = ?, popularity_score = popularity_score + 1
+            WHERE id = ?
+          `).bind(avgResult.avg_rating, data.knowledge_entry_id).run();
+        }
+      }
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      throw error;
+    }
+  }
+}
+const ENHANCED_KNOWLEDGE_BASE = [
+  // Authentication Entries
+  {
+    feature_module: "Authentication",
+    functionality: "User Login",
+    description: "Interface principal para acesso de usuários existentes ao Modo Caverna",
+    subcategory: "auth_login",
+    difficulty_level: "basico",
+    estimated_time: 2,
+    prerequisites: ["conta_criada", "email_verificado"],
+    related_features: ["password_recovery", "registration", "session_management"],
+    tags: ["login", "acesso", "autenticacao", "entrar", "signin"],
+    use_cases: [
+      "Acesso diário matinal para check-in de rituais",
+      "Retorno após pausa para continuar desafios",
+      "Acesso em novo dispositivo com credenciais existentes"
+    ],
+    ui_elements: "E-mail field, Senha field, Acessar button, Mantenha-me conectado checkbox",
+    ui_elements_pt: ["E-mail", "Senha", "Acessar", "Mantenha-me conectado", "Esqueceu a senha?"],
+    user_questions_en: "How do I log in? I can't access my account",
+    user_questions_pt: [
+      "Como eu faço login?",
+      "Não consigo acessar minha conta",
+      "Onde está o botão de entrar?",
+      "Como entrar no sistema?"
+    ],
+    category: "authentication",
+    content_text: "Para acessar sua conta no Modo Caverna, use o formulário de login com seu e-mail e senha cadastrados. A entrada na caverna representa seu compromisso diário com a transformação pessoal.",
+    quick_action: "E-mail → Senha → Acessar",
+    step_by_step_guide: [
+      "Acesse a página de login do Modo Caverna",
+      "Digite seu e-mail cadastrado no campo 'E-mail'",
+      "Insira sua senha no campo 'Senha'",
+      "Marque 'Mantenha-me conectado' se desejar sessão prolongada",
+      "Clique no botão 'Acessar'",
+      "Aguarde redirecionamento para a Central Caverna"
+    ],
+    real_world_examples: [
+      "João acessa todo dia às 6h para fazer check-in dos rituais matinais",
+      "Maria volta após 3 dias de viagem e precisa recuperar onde parou no desafio",
+      "Pedro está em um computador novo no trabalho e precisa acessar sua agenda"
+    ],
+    troubleshooting: "Se login falhar: 1) Verificar se email/senha estão corretos, 2) Limpar cache do navegador, 3) Tentar recuperação de senha, 4) Verificar conexão com internet",
+    advanced_tips: [
+      "Use 'Mantenha-me conectado' apenas em dispositivos pessoais",
+      "Configure um gerenciador de senhas para acesso mais rápido",
+      "Mantenha sua senha segura e única para o Modo Caverna"
+    ],
+    philosophy_integration: "A entrada na caverna representa o compromisso diário com sua transformação pessoal. Cada login é uma declaração de que você escolhe evoluir conscientemente, isolando-se das distrações para focar no que realmente importa."
+  },
+  {
+    feature_module: "Authentication",
+    functionality: "Password Recovery",
+    description: "Processo para redefinir senha esquecida",
+    subcategory: "auth_recovery",
+    difficulty_level: "basico",
+    estimated_time: 5,
+    prerequisites: ["conta_existente", "email_valido"],
+    related_features: ["user_login", "email_verification"],
+    tags: ["senha", "recuperar", "esqueci", "redefinir", "password"],
+    use_cases: [
+      "Esquecimento após período sem uso",
+      "Mudança de dispositivo sem lembrar credenciais",
+      "Suspeita de comprometimento da conta"
+    ],
+    ui_elements: "Esqueceu a senha? link, Email field, Enviar link button",
+    ui_elements_pt: ["Esqueceu a senha?", "E-mail", "Enviar link de recuperação", "Voltar ao login"],
+    user_questions_en: "What if I forget my password? How to reset password?",
+    user_questions_pt: [
+      "O que eu faço se esquecer minha senha?",
+      "Como redefinir minha senha?",
+      "Não lembro minha senha",
+      "Como recuperar acesso à conta?"
+    ],
+    category: "authentication",
+    content_text: "O processo de recuperação de senha permite que você redefina suas credenciais através de um link enviado por e-mail, garantindo acesso seguro à sua jornada de transformação.",
+    quick_action: "Esqueceu a senha? → E-mail → Enviar link",
+    step_by_step_guide: [
+      "Na tela de login, clique em 'Esqueceu a senha?'",
+      "Digite seu e-mail cadastrado",
+      "Clique em 'Enviar link de recuperação'",
+      "Verifique sua caixa de entrada (e spam)",
+      "Clique no link recebido por e-mail",
+      "Crie uma nova senha forte",
+      "Confirme a nova senha",
+      "Retorne ao login com as novas credenciais"
+    ],
+    real_world_examples: [
+      "Ana não acessa há 2 meses e esqueceu a senha",
+      "Carlos suspeita que alguém acessou sua conta",
+      "Lucia trocou de celular e não lembra a senha"
+    ],
+    troubleshooting: "Se não receber o e-mail: 1) Verificar pasta de spam, 2) Aguardar até 10 minutos, 3) Confirmar e-mail correto, 4) Tentar novamente, 5) Contatar suporte se persistir",
+    advanced_tips: [
+      "Use senhas únicas e fortes (mínimo 8 caracteres)",
+      "Considere usar um gerenciador de senhas",
+      "Anote a nova senha temporariamente em local seguro",
+      "Faça login imediatamente após alterar para confirmar"
+    ],
+    philosophy_integration: "Mesmo quando perdemos o caminho, a alcatéia oferece uma forma de retornar. A recuperação de senha simboliza que sempre há uma segunda chance para retomar sua jornada de transformação."
+  },
+  // Onboarding Entries
+  {
+    feature_module: "Onboarding",
+    functionality: "Welcome Screen",
+    description: "Primeira tela de boas-vindas para novos membros da alcatéia",
+    subcategory: "onboarding_welcome",
+    difficulty_level: "basico",
+    estimated_time: 3,
+    prerequisites: ["conta_criada"],
+    related_features: ["ai_assistant_setup", "video_tour", "profile_setup"],
+    tags: ["boas-vindas", "primeiro-acesso", "introducao", "caverna", "welcome"],
+    use_cases: [
+      "Primeiro acesso após criar conta",
+      "Retorno para completar onboarding",
+      "Reengajamento após período inativo"
+    ],
+    ui_elements: "Seja bem-vindo(a) à Caverna title, Começar jornada button",
+    ui_elements_pt: ["Seja bem-vindo(a) à Caverna", "Começar jornada", "Pular introdução", "Saiba mais"],
+    user_questions_en: "What's the first screen I see? How to get started?",
+    user_questions_pt: [
+      "Qual a primeira tela que vejo?",
+      "Como começar no Modo Caverna?",
+      "O que fazer primeiro?",
+      "Como iniciar minha jornada?"
+    ],
+    category: "onboarding",
+    content_text: "A tela de boas-vindas é seu primeiro contato com a filosofia Modo Caverna, apresentando os conceitos fundamentais de transformação pessoal e vida intencional.",
+    quick_action: "Ler introdução → Começar jornada",
+    step_by_step_guide: [
+      "Leia a mensagem de boas-vindas com atenção",
+      "Absorva a filosofia do Modo Caverna",
+      "Entenda que você está entrando em uma comunidade de transformação",
+      "Clique em 'Começar jornada' para o onboarding completo",
+      "Ou 'Pular introdução' se já conhece a plataforma"
+    ],
+    real_world_examples: [
+      "Roberto cria conta e quer entender o que é Modo Caverna",
+      "Fernanda volta após 6 meses para retomar sua jornada",
+      "Marcos foi indicado por um amigo e quer conhecer o sistema"
+    ],
+    troubleshooting: "Se a tela não carregar: 1) Aguardar carregamento completo, 2) Atualizar página, 3) Verificar conexão, 4) Tentar outro navegador",
+    advanced_tips: [
+      "Dedique tempo para absorver a filosofia antes de prosseguir",
+      "Mantenha mente aberta para nova abordagem de produtividade",
+      "Prepare-se mentalmente para transformação real"
+    ],
+    philosophy_integration: "Bem-vindo à caverna, lobo. Aqui você escolhe o isolamento das distrações superficiais, a intencionalidade em cada ação e a urgência de quem sabe que o tempo está passando. Somos uma alcatéia ativando o Modo Caverna."
+  },
+  {
+    feature_module: "Onboarding",
+    functionality: "AI Assistant Setup",
+    description: "Configuração do assistente de IA via WhatsApp para acompanhamento personalizado",
+    subcategory: "onboarding_ai_setup",
+    difficulty_level: "intermediario",
+    estimated_time: 5,
+    prerequisites: ["welcome_screen_completed"],
+    related_features: ["whatsapp_integration", "notifications", "reminders"],
+    tags: ["assistente", "ia", "whatsapp", "acompanhamento", "ai"],
+    use_cases: [
+      "Configurar lembretes diários de rituais",
+      "Receber motivação personalizada",
+      "Acompanhamento de progresso via WhatsApp"
+    ],
+    ui_elements: "Seu WhatsApp field, Conectar assistente button, Pular por agora link",
+    ui_elements_pt: ["Seu WhatsApp", "Conectar assistente", "Pular por agora", "Testar conexão"],
+    user_questions_en: "What is the AI assistant? How to connect WhatsApp?",
+    user_questions_pt: [
+      "O que é o assistente de IA?",
+      "Como conectar meu WhatsApp?",
+      "Para que serve o assistente?",
+      "É seguro dar meu número?"
+    ],
+    category: "onboarding",
+    content_text: "O assistente de IA é seu companheiro digital na jornada de transformação, enviando lembretes, motivação e acompanhamento personalizado via WhatsApp.",
+    quick_action: "Número do WhatsApp → Conectar assistente",
+    step_by_step_guide: [
+      "Digite seu número de WhatsApp no formato (11) 99999-9999",
+      "Clique em 'Conectar assistente'",
+      "Aguarde mensagem de verificação no WhatsApp",
+      "Responda à mensagem conforme orientado",
+      "Configure preferências de horário e frequência",
+      "Confirme ativação do assistente"
+    ],
+    real_world_examples: [
+      "Sandra quer lembretes para meditar às 6h da manhã",
+      "Paulo precisa de motivação nos dias difíceis do desafio",
+      "Carla quer acompanhar progresso sem abrir o app constantemente"
+    ],
+    troubleshooting: "Se não receber mensagens: 1) Verificar número digitado, 2) Confirmar WhatsApp funcionando, 3) Verificar bloqueios de números desconhecidos, 4) Aguardar até 24h, 5) Reconectar se necessário",
+    advanced_tips: [
+      "Configure horários que funcionem com sua rotina",
+      "Responda às mensagens para melhorar personalização",
+      "Use como accountability partner digital",
+      "Ajuste configurações conforme evolução"
+    ],
+    philosophy_integration: "O assistente é como um lobo experiente da alcatéia que te acompanha, lembrando dos compromissos com sua transformação e oferecendo sabedoria nos momentos certos."
+  },
+  // Dashboard Entries
+  {
+    feature_module: "Dashboard",
+    functionality: "Central Caverna",
+    description: "Painel principal de comando da jornada de transformação pessoal",
+    subcategory: "dashboard_main",
+    difficulty_level: "basico",
+    estimated_time: 3,
+    prerequisites: ["onboarding_completed"],
+    related_features: ["streak_counter", "rituals", "challenges", "agenda"],
+    tags: ["dashboard", "painel", "central", "caverna", "inicio"],
+    use_cases: [
+      "Check-in matinal diário",
+      "Visão geral do progresso",
+      "Navegação para outras funcionalidades",
+      "Acompanhamento de metas"
+    ],
+    ui_elements: "Navigation tabs, Widgets, Quick actions, Progress indicators",
+    ui_elements_pt: ["Central Caverna", "Visão Geral", "Ações Rápidas", "Progresso", "Navegação"],
+    user_questions_en: "What's on the main screen? How to navigate?",
+    user_questions_pt: [
+      "O que tem na tela principal?",
+      "Como navegar no sistema?",
+      "Onde vejo meu progresso?",
+      "Como usar o dashboard?"
+    ],
+    category: "dashboard",
+    content_text: "A Central Caverna é seu centro de comando pessoal, oferecendo visão completa da jornada de transformação com widgets de progresso, ações rápidas e navegação intuitiva.",
+    quick_action: "Visualizar progresso → Acessar funcionalidades",
+    step_by_step_guide: [
+      "Observe o contador de dias consecutivos",
+      "Verifique status dos rituais diários",
+      "Analise progresso dos desafios ativos",
+      "Use ações rápidas para tarefas frequentes",
+      "Navegue pelas abas para diferentes seções",
+      "Identifique notificações importantes"
+    ],
+    real_world_examples: [
+      "Marina faz check-in matinal para ver o que precisa fazer hoje",
+      "Ricardo verifica se manteve a sequência de dias",
+      "Juliana usa ações rápidas para marcar rituais como completos"
+    ],
+    troubleshooting: "Se dashboard não carrega: 1) Atualizar página (F5), 2) Verificar conexão, 3) Aguardar sincronização, 4) Fazer logout/login, 5) Limpar cache",
+    advanced_tips: [
+      "Personalize ordem dos widgets conforme prioridade",
+      "Use atalhos de teclado para navegação rápida",
+      "Configure notificações para lembretes importantes",
+      "Mantenha como página inicial do navegador"
+    ],
+    philosophy_integration: "A Central Caverna é o coração da sua transformação - um espaço sagrado onde você monitora seu progresso, celebra vitórias e planeja os próximos passos da jornada."
+  },
+  // Challenge Entries
+  {
+    feature_module: "Cave Challenge",
+    functionality: "Challenge Welcome",
+    description: "Portal de entrada para o desafio de transformação de 40 dias",
+    subcategory: "challenges_welcome",
+    difficulty_level: "intermediario",
+    estimated_time: 10,
+    prerequisites: ["rituais_configurados", "perfil_completo"],
+    related_features: ["challenge_setup", "habit_tracking", "community"],
+    tags: ["desafio", "40-dias", "transformacao", "compromisso", "challenge"],
+    use_cases: [
+      "Iniciar primeiro desafio de transformação",
+      "Retomar desafio após pausa",
+      "Entender compromisso necessário"
+    ],
+    ui_elements: "Desafio Caverna title, Eu aceito o desafio button, Saiba mais link",
+    ui_elements_pt: ["Desafio Caverna", "Eu aceito o desafio", "Saiba mais", "Requisitos", "Compromisso"],
+    user_questions_en: "How do I start the challenge? What is the 40-day challenge?",
+    user_questions_pt: [
+      "Como eu começo o desafio?",
+      "O que é o Desafio Caverna?",
+      "Estou pronto para o desafio?",
+      "Quais são os requisitos?"
+    ],
+    category: "challenges",
+    content_text: "O Desafio Caverna é uma jornada intensiva de 40 dias focada em transformação profunda através da eliminação de hábitos destrutivos e criação de novos padrões de excelência.",
+    quick_action: "Ler sobre desafio → Eu aceito o desafio",
+    step_by_step_guide: [
+      "Leia sobre o compromisso de 40 dias",
+      "Avalie se está pronto para a jornada",
+      "Entenda que é transformação real, não jogo",
+      "Clique 'Eu aceito o desafio' apenas se comprometido",
+      "Prepare-se mentalmente para 40 dias de disciplina",
+      "Visualize-se completando a transformação"
+    ],
+    real_world_examples: [
+      "André quer eliminar redes sociais e focar nos estudos",
+      "Beatriz decidiu criar hábito de exercícios e leitura diária",
+      "Carlos quer transformar completamente sua rotina matinal"
+    ],
+    troubleshooting: "Se não se sente pronto: 1) Comece com rituais simples, 2) Fortaleça consistência básica, 3) Participe da comunidade, 4) Defina objetivos menores, 5) Aguarde momento apropriado",
+    advanced_tips: [
+      "Escolha período com menos compromissos externos",
+      "Comunique desafio para pessoas próximas",
+      "Prepare ambiente físico para sucesso",
+      "Tenha plano B para dias difíceis"
+    ],
+    philosophy_integration: "O Desafio Caverna é o ritual de passagem da alcatéia. É onde você prova para si mesmo que tem a força interior para transformar intenção em ação, disciplina em identidade."
+  }
+];
+class KnowledgeDataSeeder {
+  constructor(db) {
+    this.db = db;
+  }
+  async seedEnhancedData() {
+    console.log("Starting enhanced knowledge base data seeding...");
+    try {
+      for (const entry of ENHANCED_KNOWLEDGE_BASE) {
+        await this.updateExistingEntry(entry);
+      }
+      await this.seedSynonymData();
+      await this.seedIntentPatterns();
+      console.log("✅ Enhanced knowledge base data seeded successfully");
+    } catch (error) {
+      console.error("❌ Error seeding enhanced data:", error);
+      throw error;
+    }
+  }
+  async updateExistingEntry(entry) {
+    try {
+      const result = await this.db.prepare(`
+        UPDATE knowledge_entries SET
+          subcategory = ?,
+          difficulty_level = ?,
+          estimated_time = ?,
+          prerequisites = ?,
+          related_features = ?,
+          tags = ?,
+          use_cases = ?,
+          ui_elements_pt = ?,
+          user_questions_pt = ?,
+          quick_action = ?,
+          step_by_step_guide = ?,
+          real_world_examples = ?,
+          troubleshooting = ?,
+          advanced_tips = ?,
+          philosophy_integration = ?,
+          last_updated = CURRENT_TIMESTAMP
+        WHERE feature_module = ? AND functionality = ?
+      `).bind(
+        entry.subcategory,
+        entry.difficulty_level,
+        entry.estimated_time,
+        JSON.stringify(entry.prerequisites),
+        JSON.stringify(entry.related_features),
+        JSON.stringify(entry.tags),
+        JSON.stringify(entry.use_cases),
+        JSON.stringify(entry.ui_elements_pt),
+        JSON.stringify(entry.user_questions_pt),
+        entry.quick_action,
+        JSON.stringify(entry.step_by_step_guide),
+        JSON.stringify(entry.real_world_examples),
+        entry.troubleshooting,
+        JSON.stringify(entry.advanced_tips),
+        entry.philosophy_integration,
+        entry.feature_module,
+        entry.functionality
+      ).run();
+      if (result.changes === 0) {
+        await this.insertNewEntry(entry);
+      }
+    } catch (error) {
+      console.error(`Error updating entry ${entry.feature_module} - ${entry.functionality}:`, error);
+    }
+  }
+  async insertNewEntry(entry) {
+    await this.db.prepare(`
+      INSERT INTO knowledge_entries (
+        feature_module, functionality, description, subcategory, difficulty_level,
+        estimated_time, prerequisites, related_features, tags, use_cases,
+        ui_elements, ui_elements_pt, user_questions_en, user_questions_pt,
+        category, content_text, quick_action, step_by_step_guide,
+        real_world_examples, troubleshooting, advanced_tips, philosophy_integration,
+        last_updated, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, true)
+    `).bind(
+      entry.feature_module,
+      entry.functionality,
+      entry.description,
+      entry.subcategory,
+      entry.difficulty_level,
+      entry.estimated_time,
+      JSON.stringify(entry.prerequisites),
+      JSON.stringify(entry.related_features),
+      JSON.stringify(entry.tags),
+      JSON.stringify(entry.use_cases),
+      entry.ui_elements,
+      JSON.stringify(entry.ui_elements_pt),
+      entry.user_questions_en,
+      JSON.stringify(entry.user_questions_pt),
+      entry.category,
+      entry.content_text,
+      entry.quick_action,
+      JSON.stringify(entry.step_by_step_guide),
+      JSON.stringify(entry.real_world_examples),
+      entry.troubleshooting,
+      JSON.stringify(entry.advanced_tips),
+      entry.philosophy_integration
+    ).run();
+  }
+  async seedSynonymData() {
+    const synonyms = [
+      { term: "login", synonyms: ["entrar", "acessar", "signin", "access", "autenticacao", "autenticação"], category: "auth" },
+      { term: "desafio", synonyms: ["challenge", "40-dias", "transformacao", "transformação", "jornada"], category: "challenges" },
+      { term: "ritual", synonyms: ["rotina", "habito", "hábito", "routine", "manhã", "noite"], category: "rituals" },
+      { term: "agenda", synonyms: ["calendario", "calendário", "schedule", "compromisso", "evento"], category: "calendar" },
+      { term: "comunidade", synonyms: ["feed", "social", "alcateia", "alcatéia", "lobos", "wolves"], category: "community" },
+      { term: "forja", synonyms: ["fitness", "treino", "workout", "exercicio", "exercício", "saude", "saúde"], category: "fitness" },
+      { term: "metas", synonyms: ["objetivos", "goals", "targets", "alvos", "propositos", "propósitos"], category: "goals" },
+      { term: "manifestacao", synonyms: ["manifestação", "lei-da-atracao", "lei-da-atração", "visualizacao", "visualização"], category: "manifestation" },
+      { term: "produtividade", synonyms: ["pomodoro", "tarefas", "foco", "flow", "concentracao", "concentração"], category: "productivity" },
+      { term: "sequencia", synonyms: ["sequência", "streak", "dias-consecutivos", "consistencia", "consistência"], category: "dashboard" }
+    ];
+    for (const synonym of synonyms) {
+      await this.db.prepare(`
+        INSERT OR REPLACE INTO search_synonyms (term, synonyms, category, language)
+        VALUES (?, ?, ?, 'pt')
+      `).bind(synonym.term, JSON.stringify(synonym.synonyms), synonym.category).run();
+    }
+  }
+  async seedIntentPatterns() {
+    const patterns = [
+      { pattern: "como", intent_type: "how_to", response_template: "step_by_step_guide" },
+      { pattern: "o que é", intent_type: "what_is", response_template: "concept_explanation" },
+      { pattern: "onde", intent_type: "where_find", response_template: "navigation_guide" },
+      { pattern: "não funciona", intent_type: "troubleshooting", response_template: "troubleshooting_guide" },
+      { pattern: "erro", intent_type: "troubleshooting", response_template: "troubleshooting_guide" },
+      { pattern: "problema", intent_type: "troubleshooting", response_template: "troubleshooting_guide" }
+    ];
+    for (const pattern of patterns) {
+      await this.db.prepare(`
+        INSERT OR REPLACE INTO search_intent_patterns (pattern, intent_type, response_template, language, is_active)
+        VALUES (?, ?, ?, 'pt', true)
+      `).bind(pattern.pattern, pattern.intent_type, pattern.response_template).run();
+    }
+  }
+}
 const getHttpHandlerExtensionConfiguration = (runtimeConfig) => {
   return {
     setHttpHandler(handler) {
@@ -24766,7 +25494,7 @@ NEGATIVE PROMPT: ${negativePrompt}`;
       isValid: errors.length === 0,
       errors,
       warnings,
-      suggestions: suggestions.length > 0 ? suggestions : void 0
+      suggestions: suggestions.length > 0 ? suggestions : errors.length > 0 ? ["Please check parameter compatibility and try again"] : void 0
     };
   }
   /**
@@ -24849,7 +25577,7 @@ NEGATIVE PROMPT: ${negativePrompt}`;
       name: "Sitting on Rock",
       description: "Relaxed pose sitting on a cave rock formation",
       category: "primary",
-      compatibleOutfits: ["hoodie-sweatpants", "tshirt-shorts"],
+      compatibleOutfits: ["hoodie-sweatpants", "tshirt-shorts", "windbreaker-shorts"],
       promptFragment: "Sitting comfortably on a large granite rock formation, relaxed but alert posture, hands resting naturally"
     });
     this.poses.set("holding-cave-map", {
@@ -24865,7 +25593,7 @@ NEGATIVE PROMPT: ${negativePrompt}`;
       name: "Hoodie + Sweatpants",
       description: "Casual comfort outfit with hooded sweatshirt and matching sweatpants",
       promptFragment: "Wearing a comfortable gray hooded sweatshirt with drawstrings, matching gray sweatpants with elastic waistband, relaxed fit clothing",
-      compatibleFootwear: ["air-jordan-1-chicago", "air-jordan-11-bred", "nike-air-max-90"]
+      compatibleFootwear: ["air-jordan-1-chicago", "air-jordan-11-bred", "nike-air-max-90", "adidas-ultraboost"]
     });
     this.outfits.set("tshirt-shorts", {
       id: "tshirt-shorts",
@@ -24915,7 +25643,7 @@ NEGATIVE PROMPT: ${negativePrompt}`;
       brand: "Adidas",
       model: "Ultraboost",
       promptFragment: "Wearing Adidas Ultraboost sneakers in core black colorway, Boost midsole technology, Primeknit upper, three stripes branding",
-      compatibleOutfits: ["tshirt-shorts", "windbreaker-shorts"]
+      compatibleOutfits: ["hoodie-sweatpants", "tshirt-shorts", "windbreaker-shorts"]
     });
     this.props.set("cave-map", {
       id: "cave-map",
@@ -25798,7 +26526,818 @@ class DatabaseLayer {
     }
   }
 }
+class ProductionMonitoring {
+  constructor(env2) {
+    this.env = env2;
+    this.startTime = Date.now();
+  }
+  /**
+   * Comprehensive health check for all system components
+   */
+  async performHealthCheck() {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    const [database, storage, externalServices, memory, performance2] = await Promise.allSettled([
+      this.checkDatabase(),
+      this.checkStorage(),
+      this.checkExternalServices(),
+      this.checkMemory(),
+      this.checkPerformance()
+    ]);
+    const checks = {
+      database: this.getCheckResult(database),
+      storage: this.getCheckResult(storage),
+      externalServices: this.getCheckResult(externalServices),
+      memory: this.getCheckResult(memory),
+      performance: this.getCheckResult(performance2)
+    };
+    const hasFailures = Object.values(checks).some((check) => check.status === "fail");
+    const hasWarnings = Object.values(checks).some((check) => check.status === "warn");
+    const status = hasFailures ? "unhealthy" : hasWarnings ? "degraded" : "healthy";
+    return {
+      status,
+      timestamp,
+      checks,
+      metadata: {
+        version: "1.0.0",
+        environment: this.env.ENVIRONMENT || "production",
+        region: "global"
+      }
+    };
+  }
+  /**
+   * Check database connectivity and performance
+   */
+  async checkDatabase() {
+    const startTime = Date.now();
+    try {
+      const result = await this.env.IMAGE_DB.prepare("SELECT 1 as test").first();
+      if (!result || result.test !== 1) {
+        return {
+          status: "fail",
+          message: "Database connectivity test failed",
+          responseTime: Date.now() - startTime
+        };
+      }
+      const imageCount = await this.env.IMAGE_DB.prepare(
+        'SELECT COUNT(*) as count FROM GeneratedImages WHERE created_at > datetime("now", "-1 hour")'
+      ).first();
+      const responseTime = Date.now() - startTime;
+      return {
+        status: responseTime > 1e3 ? "warn" : "pass",
+        responseTime,
+        message: responseTime > 1e3 ? "Database response time is slow" : "Database is healthy",
+        details: {
+          recentImages: imageCount?.count || 0,
+          queryTime: responseTime
+        }
+      };
+    } catch (error) {
+      return {
+        status: "fail",
+        responseTime: Date.now() - startTime,
+        message: `Database error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        details: { error: String(error) }
+      };
+    }
+  }
+  /**
+   * Check R2 storage connectivity and performance
+   */
+  async checkStorage() {
+    const startTime = Date.now();
+    try {
+      const testKey = `health-check/test-${Date.now()}.txt`;
+      const testContent = new TextEncoder().encode("health-check-test");
+      await this.env.IMAGE_BUCKET.put(testKey, testContent, {
+        httpMetadata: {
+          contentType: "text/plain",
+          cacheControl: "no-cache"
+        }
+      });
+      const object = await this.env.IMAGE_BUCKET.get(testKey);
+      if (!object) {
+        return {
+          status: "fail",
+          message: "Storage read test failed",
+          responseTime: Date.now() - startTime
+        };
+      }
+      await this.env.IMAGE_BUCKET.delete(testKey);
+      const responseTime = Date.now() - startTime;
+      return {
+        status: responseTime > 2e3 ? "warn" : "pass",
+        responseTime,
+        message: responseTime > 2e3 ? "Storage response time is slow" : "Storage is healthy",
+        details: {
+          writeReadTime: responseTime
+        }
+      };
+    } catch (error) {
+      return {
+        status: "fail",
+        responseTime: Date.now() - startTime,
+        message: `Storage error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        details: { error: String(error) }
+      };
+    }
+  }
+  /**
+   * Check external AI services availability
+   */
+  async checkExternalServices() {
+    const startTime = Date.now();
+    try {
+      const serviceType = this.env.IMAGE_GENERATION_SERVICE || "midjourney";
+      const hasApiKey = !!(this.env.MIDJOURNEY_API_KEY || this.env.DALLE_API_KEY || this.env.STABLE_DIFFUSION_API_KEY);
+      if (!hasApiKey) {
+        return {
+          status: "fail",
+          message: "No API keys configured for external services",
+          responseTime: Date.now() - startTime
+        };
+      }
+      return {
+        status: "pass",
+        responseTime: Date.now() - startTime,
+        message: "External services configuration is healthy",
+        details: {
+          configuredService: serviceType,
+          hasApiKey
+        }
+      };
+    } catch (error) {
+      return {
+        status: "fail",
+        responseTime: Date.now() - startTime,
+        message: `External services check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        details: { error: String(error) }
+      };
+    }
+  }
+  /**
+   * Check memory usage and performance
+   */
+  async checkMemory() {
+    const startTime = Date.now();
+    try {
+      const uptime2 = Date.now() - this.startTime;
+      return {
+        status: "pass",
+        responseTime: Date.now() - startTime,
+        message: "Memory check completed",
+        details: {
+          uptime: uptime2,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      };
+    } catch (error) {
+      return {
+        status: "fail",
+        responseTime: Date.now() - startTime,
+        message: `Memory check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        details: { error: String(error) }
+      };
+    }
+  }
+  /**
+   * Check overall system performance
+   */
+  async checkPerformance() {
+    const startTime = Date.now();
+    try {
+      const dbStart = Date.now();
+      await this.env.IMAGE_DB.prepare("SELECT COUNT(*) FROM GeneratedImages LIMIT 1").first();
+      const dbTime = Date.now() - dbStart;
+      const r2Start = Date.now();
+      await this.env.IMAGE_BUCKET.list({ limit: 1 });
+      const r2Time = Date.now() - r2Start;
+      const totalTime = Date.now() - startTime;
+      const isPerformant = dbTime < 500 && r2Time < 1e3 && totalTime < 2e3;
+      return {
+        status: isPerformant ? "pass" : "warn",
+        responseTime: totalTime,
+        message: isPerformant ? "Performance is optimal" : "Performance is degraded",
+        details: {
+          databaseQueryTime: dbTime,
+          storageListTime: r2Time,
+          totalCheckTime: totalTime
+        }
+      };
+    } catch (error) {
+      return {
+        status: "fail",
+        responseTime: Date.now() - startTime,
+        message: `Performance check failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        details: { error: String(error) }
+      };
+    }
+  }
+  /**
+   * Collect system metrics for monitoring
+   */
+  async collectMetrics() {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    try {
+      const recentStats = await this.env.IMAGE_DB.prepare(`
+        SELECT 
+          COUNT(*) as total_images,
+          COUNT(CASE WHEN status = 'COMPLETE' THEN 1 END) as successful_images,
+          COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failed_images,
+          AVG(CASE WHEN generation_time_ms IS NOT NULL THEN generation_time_ms END) as avg_generation_time,
+          COUNT(CASE WHEN created_at > datetime('now', '-1 hour') THEN 1 END) as recent_images
+        FROM GeneratedImages 
+        WHERE created_at > datetime('now', '-24 hours')
+      `).first();
+      const cacheStats = await this.env.IMAGE_DB.prepare(`
+        SELECT COUNT(*) as cached_prompts 
+        FROM PromptCache 
+        WHERE created_at > datetime('now', '-24 hours')
+      `).first();
+      return {
+        timestamp,
+        metrics: {
+          requests: {
+            total: recentStats?.recent_images || 0,
+            successful: recentStats?.successful_images || 0,
+            failed: recentStats?.failed_images || 0,
+            averageResponseTime: 0
+            // Would need to track this separately
+          },
+          images: {
+            generated: recentStats?.total_images || 0,
+            cached: cacheStats?.cached_prompts || 0,
+            failed: recentStats?.failed_images || 0,
+            averageGenerationTime: recentStats?.avg_generation_time || 0
+          },
+          storage: {
+            totalObjects: 0,
+            // Would need to track this
+            totalSize: 0,
+            // Would need to track this
+            uploadSuccess: recentStats?.successful_images || 0,
+            uploadFailures: recentStats?.failed_images || 0
+          },
+          database: {
+            queries: 0,
+            // Would need to track this
+            averageQueryTime: 0,
+            // Would need to track this
+            connections: 1,
+            // Single connection in Workers
+            errors: 0
+            // Would need to track this
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        timestamp,
+        metrics: {
+          requests: { total: 0, successful: 0, failed: 0, averageResponseTime: 0 },
+          images: { generated: 0, cached: 0, failed: 0, averageGenerationTime: 0 },
+          storage: { totalObjects: 0, totalSize: 0, uploadSuccess: 0, uploadFailures: 0 },
+          database: { queries: 0, averageQueryTime: 0, connections: 0, errors: 1 }
+        }
+      };
+    }
+  }
+  /**
+   * Log metrics to analytics engine (if available)
+   */
+  async logMetrics(metrics) {
+    try {
+      if (this.env.IMAGE_ANALYTICS) {
+        await this.env.IMAGE_ANALYTICS.writeDataPoint({
+          blobs: [JSON.stringify(metrics)],
+          doubles: [
+            metrics.metrics.requests.total,
+            metrics.metrics.images.generated,
+            metrics.metrics.images.averageGenerationTime
+          ],
+          indexes: [metrics.timestamp]
+        });
+      }
+    } catch (error) {
+      console.error("Failed to log metrics:", error);
+    }
+  }
+  /**
+   * Helper method to extract check result from Promise.allSettled result
+   */
+  getCheckResult(result) {
+    if (result.status === "fulfilled") {
+      return result.value;
+    } else {
+      return {
+        status: "fail",
+        message: `Check failed: ${result.reason}`,
+        details: { error: String(result.reason) }
+      };
+    }
+  }
+}
+function createHealthCheckHandler(env2) {
+  return async () => {
+    const monitoring = new ProductionMonitoring(env2);
+    try {
+      const healthCheck = await monitoring.performHealthCheck();
+      const statusCode = healthCheck.status === "healthy" ? 200 : healthCheck.status === "degraded" ? 200 : 503;
+      return new Response(JSON.stringify(healthCheck, null, 2), {
+        status: statusCode,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "X-Health-Status": healthCheck.status
+        }
+      });
+    } catch (error) {
+      const errorResponse = {
+        status: "unhealthy",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        error: error instanceof Error ? error.message : "Unknown error",
+        checks: {}
+      };
+      return new Response(JSON.stringify(errorResponse, null, 2), {
+        status: 503,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "X-Health-Status": "unhealthy"
+        }
+      });
+    }
+  };
+}
+function createMetricsHandler(env2) {
+  return async () => {
+    const monitoring = new ProductionMonitoring(env2);
+    try {
+      const metrics = await monitoring.collectMetrics();
+      await monitoring.logMetrics(metrics);
+      return new Response(JSON.stringify(metrics, null, 2), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+      });
+    } catch (error) {
+      const errorResponse = {
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      return new Response(JSON.stringify(errorResponse, null, 2), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+      });
+    }
+  };
+}
+class SecurityManager {
+  constructor(env2, config2) {
+    this.env = env2;
+    this.config = {
+      rateLimits: {
+        perUser: {
+          requests: parseInt(env2.RATE_LIMIT_PER_USER_PER_HOUR) || 50,
+          window: 3600
+          // 1 hour
+        },
+        perIP: {
+          requests: 100,
+          window: 3600
+          // 1 hour
+        },
+        global: {
+          requests: 1e3,
+          window: 60
+          // 1 minute
+        }
+      },
+      authentication: {
+        sessionTimeout: 24 * 60 * 60,
+        // 24 hours
+        maxSessions: 5,
+        requireEmailVerification: true
+      },
+      contentSafety: {
+        enablePromptFiltering: true,
+        enableImageModeration: true,
+        blockedKeywords: [
+          "violence",
+          "weapon",
+          "drug",
+          "hate",
+          "explicit",
+          "nude",
+          "sexual",
+          "inappropriate",
+          "offensive"
+        ]
+      },
+      audit: {
+        logAllRequests: true,
+        logFailedAttempts: true,
+        retentionDays: 90
+      },
+      ...config2
+    };
+  }
+  /**
+   * Check rate limits for a user or IP address
+   */
+  async checkRateLimit(identifier, type2) {
+    const now = Math.floor(Date.now() / 1e3);
+    const configKey = type2 === "user" ? "perUser" : type2 === "ip" ? "perIP" : "global";
+    const config2 = this.config.rateLimits[configKey];
+    try {
+      const result = await this.env.IMAGE_DB.prepare(`
+        SELECT COUNT(*) as count 
+        FROM SecurityAuditLog 
+        WHERE identifier = ? 
+        AND timestamp > datetime('now', '-${config2.window} seconds')
+        AND action = 'image_generation_request'
+      `).bind(identifier).first();
+      const currentCount = result?.count || 0;
+      const remaining = Math.max(0, config2.requests - currentCount);
+      const allowed = currentCount < config2.requests;
+      return {
+        allowed,
+        remaining,
+        resetTime: now + config2.window,
+        retryAfter: allowed ? void 0 : config2.window
+      };
+    } catch (error) {
+      console.error("Rate limit check failed:", error);
+      return {
+        allowed: true,
+        remaining: config2.requests,
+        resetTime: now + config2.window
+      };
+    }
+  }
+  /**
+   * Validate user authentication and authorization
+   */
+  async validateAuthentication(token, requiredRole) {
+    try {
+      if (!token) {
+        return { valid: false, error: "No authentication token provided" };
+      }
+      const session = await this.env.IMAGE_DB.prepare(`
+        SELECT u.*, s.expires_at 
+        FROM Users u 
+        JOIN Sessions s ON u.user_id = s.user_id 
+        WHERE s.session_token = ? 
+        AND s.expires_at > datetime('now')
+      `).bind(token).first();
+      if (!session) {
+        return { valid: false, error: "Invalid or expired session" };
+      }
+      if (requiredRole && session.role !== requiredRole && session.role !== "admin") {
+        return { valid: false, error: "Insufficient permissions" };
+      }
+      return { valid: true, user: session };
+    } catch (error) {
+      console.error("Authentication validation failed:", error);
+      return { valid: false, error: "Authentication system error" };
+    }
+  }
+  /**
+   * Filter and validate prompt content for safety
+   */
+  async validatePromptContent(prompt) {
+    try {
+      const lowerPrompt = prompt.toLowerCase();
+      const flags = [];
+      let confidence = 1;
+      for (const keyword of this.config.contentSafety.blockedKeywords) {
+        if (lowerPrompt.includes(keyword.toLowerCase())) {
+          flags.push(`blocked_keyword:${keyword}`);
+          confidence = Math.min(confidence, 0.3);
+        }
+      }
+      const suspiciousPatterns = [
+        /\b(kill|murder|death|violence)\b/i,
+        /\b(nude|naked|sexual|explicit)\b/i,
+        /\b(drug|cocaine|heroin|marijuana)\b/i,
+        /\b(hate|racist|nazi|terrorist)\b/i
+      ];
+      for (const pattern of suspiciousPatterns) {
+        if (pattern.test(prompt)) {
+          flags.push(`suspicious_pattern:${pattern.source}`);
+          confidence = Math.min(confidence, 0.2);
+        }
+      }
+      if (prompt.length > 2e3) {
+        flags.push("excessive_length");
+        confidence = Math.min(confidence, 0.7);
+      }
+      const safe = flags.length === 0 || confidence > 0.5;
+      return {
+        safe,
+        confidence,
+        flags,
+        filteredContent: safe ? prompt : this.filterPromptContent(prompt)
+      };
+    } catch (error) {
+      console.error("Content safety check failed:", error);
+      return {
+        safe: false,
+        confidence: 0,
+        flags: ["validation_error"],
+        filteredContent: "Content validation failed"
+      };
+    }
+  }
+  /**
+   * Filter inappropriate content from prompts
+   */
+  filterPromptContent(prompt) {
+    let filtered = prompt;
+    const replacements = {
+      "violence": "action",
+      "weapon": "tool",
+      "drug": "medicine",
+      "hate": "dislike",
+      "explicit": "detailed",
+      "nude": "unclothed",
+      "sexual": "romantic",
+      "inappropriate": "unusual",
+      "offensive": "strong"
+    };
+    for (const [blocked, replacement] of Object.entries(replacements)) {
+      const regex = new RegExp(`\\b${blocked}\\b`, "gi");
+      filtered = filtered.replace(regex, replacement);
+    }
+    return filtered;
+  }
+  /**
+   * Log security events for audit trail
+   */
+  async logSecurityEvent(event) {
+    try {
+      const auditLog = {
+        id: crypto.randomUUID(),
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        ...event
+      };
+      await this.env.IMAGE_DB.prepare(`
+        INSERT INTO SecurityAuditLog (
+          id, timestamp, user_id, ip_address, user_agent, 
+          action, resource, status, details, risk_level, identifier
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        auditLog.id,
+        auditLog.timestamp,
+        auditLog.userId || null,
+        auditLog.ipAddress,
+        auditLog.userAgent,
+        auditLog.action,
+        auditLog.resource,
+        auditLog.status,
+        JSON.stringify(auditLog.details),
+        auditLog.riskLevel,
+        auditLog.userId || auditLog.ipAddress
+      ).run();
+    } catch (error) {
+      console.error("Failed to log security event:", error);
+    }
+  }
+  /**
+   * Detect and prevent abuse patterns
+   */
+  async detectAbusePatterns(userId, ipAddress) {
+    try {
+      const now = /* @__PURE__ */ new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1e3);
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1e3);
+      const recentRequests = await this.env.IMAGE_DB.prepare(`
+        SELECT COUNT(*) as count 
+        FROM SecurityAuditLog 
+        WHERE (user_id = ? OR ip_address = ?) 
+        AND timestamp > ? 
+        AND action = 'image_generation_request'
+      `).bind(userId, ipAddress, oneHourAgo.toISOString()).first();
+      if (recentRequests?.count > 20) {
+        return {
+          isAbuse: true,
+          reason: "Excessive requests in short time period",
+          action: "temporary_block"
+        };
+      }
+      const failedAttempts = await this.env.IMAGE_DB.prepare(`
+        SELECT COUNT(*) as count 
+        FROM SecurityAuditLog 
+        WHERE ip_address = ? 
+        AND timestamp > ? 
+        AND action = 'authentication' 
+        AND status = 'failure'
+      `).bind(ipAddress, oneHourAgo.toISOString()).first();
+      if (failedAttempts?.count > 10) {
+        return {
+          isAbuse: true,
+          reason: "Multiple failed authentication attempts",
+          action: "ip_block"
+        };
+      }
+      const safetyViolations = await this.env.IMAGE_DB.prepare(`
+        SELECT COUNT(*) as count 
+        FROM SecurityAuditLog 
+        WHERE (user_id = ? OR ip_address = ?) 
+        AND timestamp > ? 
+        AND action = 'content_safety_violation'
+      `).bind(userId, ipAddress, oneDayAgo.toISOString()).first();
+      if (safetyViolations?.count > 5) {
+        return {
+          isAbuse: true,
+          reason: "Multiple content safety violations",
+          action: "account_review"
+        };
+      }
+      return { isAbuse: false };
+    } catch (error) {
+      console.error("Abuse detection failed:", error);
+      return { isAbuse: false };
+    }
+  }
+  /**
+   * Clean up old audit logs based on retention policy
+   */
+  async cleanupAuditLogs() {
+    try {
+      const cutoffDate = /* @__PURE__ */ new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - this.config.audit.retentionDays);
+      await this.env.IMAGE_DB.prepare(`
+        DELETE FROM SecurityAuditLog 
+        WHERE timestamp < ?
+      `).bind(cutoffDate.toISOString()).run();
+      console.log(`Cleaned up audit logs older than ${this.config.audit.retentionDays} days`);
+    } catch (error) {
+      console.error("Failed to cleanup audit logs:", error);
+    }
+  }
+  /**
+   * Generate security report for monitoring
+   */
+  async generateSecurityReport() {
+    try {
+      const oneDayAgo = /* @__PURE__ */ new Date();
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+      const summary = await this.env.IMAGE_DB.prepare(`
+        SELECT 
+          COUNT(*) as total_requests,
+          COUNT(CASE WHEN status = 'blocked' THEN 1 END) as blocked_requests,
+          COUNT(CASE WHEN action = 'authentication' AND status = 'failure' THEN 1 END) as failed_authentications,
+          COUNT(CASE WHEN action = 'content_safety_violation' THEN 1 END) as content_violations
+        FROM SecurityAuditLog 
+        WHERE timestamp > ?
+      `).bind(oneDayAgo.toISOString()).first();
+      const risks = await this.env.IMAGE_DB.prepare(`
+        SELECT 
+          action,
+          COUNT(*) as count,
+          risk_level
+        FROM SecurityAuditLog 
+        WHERE timestamp > ? 
+        AND status IN ('failure', 'blocked')
+        GROUP BY action, risk_level
+        ORDER BY count DESC
+        LIMIT 10
+      `).bind(oneDayAgo.toISOString()).all();
+      const topRisks = risks.results?.map((risk) => ({
+        type: risk.action,
+        count: risk.count,
+        description: `${risk.action} (${risk.risk_level} risk): ${risk.count} incidents`
+      })) || [];
+      const recommendations = [];
+      if (summary?.blocked_requests > 10) {
+        recommendations.push("Consider reviewing rate limiting policies - high number of blocked requests");
+      }
+      if (summary?.failed_authentications > 20) {
+        recommendations.push("Implement CAPTCHA or additional authentication measures");
+      }
+      if (summary?.content_violations > 5) {
+        recommendations.push("Review and strengthen content safety filters");
+      }
+      return {
+        summary: {
+          totalRequests: summary?.total_requests || 0,
+          blockedRequests: summary?.blocked_requests || 0,
+          failedAuthentications: summary?.failed_authentications || 0,
+          contentViolations: summary?.content_violations || 0
+        },
+        topRisks,
+        recommendations
+      };
+    } catch (error) {
+      console.error("Failed to generate security report:", error);
+      return {
+        summary: {
+          totalRequests: 0,
+          blockedRequests: 0,
+          failedAuthentications: 0,
+          contentViolations: 0
+        },
+        topRisks: [],
+        recommendations: ["Security reporting system needs attention"]
+      };
+    }
+  }
+}
+function createSecurityMiddleware(env2) {
+  const securityManager = new SecurityManager(env2);
+  return async (c2, next) => {
+    const startTime = Date.now();
+    const ipAddress = c2.req.header("CF-Connecting-IP") || c2.req.header("X-Forwarded-For") || "unknown";
+    const userAgent = c2.req.header("User-Agent") || "unknown";
+    const userId = c2.get("user")?.user_id;
+    try {
+      const userRateLimit = userId ? await securityManager.checkRateLimit(userId, "user") : null;
+      const ipRateLimit = await securityManager.checkRateLimit(ipAddress, "ip");
+      const globalRateLimit = await securityManager.checkRateLimit("global", "global");
+      if (!userRateLimit?.allowed || !ipRateLimit.allowed || !globalRateLimit.allowed) {
+        await securityManager.logSecurityEvent({
+          userId,
+          ipAddress,
+          userAgent,
+          action: "rate_limit_exceeded",
+          resource: c2.req.path,
+          status: "blocked",
+          details: { userRateLimit, ipRateLimit, globalRateLimit },
+          riskLevel: "medium"
+        });
+        return c2.json({
+          error: "Rate limit exceeded",
+          retryAfter: Math.max(
+            userRateLimit?.retryAfter || 0,
+            ipRateLimit.retryAfter || 0,
+            globalRateLimit.retryAfter || 0
+          )
+        }, 429);
+      }
+      if (userId) {
+        const abuseCheck = await securityManager.detectAbusePatterns(userId, ipAddress);
+        if (abuseCheck.isAbuse) {
+          await securityManager.logSecurityEvent({
+            userId,
+            ipAddress,
+            userAgent,
+            action: "abuse_detected",
+            resource: c2.req.path,
+            status: "blocked",
+            details: abuseCheck,
+            riskLevel: "high"
+          });
+          return c2.json({
+            error: "Access denied due to abuse detection",
+            reason: abuseCheck.reason
+          }, 403);
+        }
+      }
+      c2.header("X-Content-Type-Options", "nosniff");
+      c2.header("X-Frame-Options", "DENY");
+      c2.header("X-XSS-Protection", "1; mode=block");
+      c2.header("Referrer-Policy", "strict-origin-when-cross-origin");
+      c2.header("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
+      await next();
+      await securityManager.logSecurityEvent({
+        userId,
+        ipAddress,
+        userAgent,
+        action: "request",
+        resource: c2.req.path,
+        status: "success",
+        details: {
+          method: c2.req.method,
+          responseTime: Date.now() - startTime
+        },
+        riskLevel: "low"
+      });
+    } catch (error) {
+      console.error("Security middleware error:", error);
+      await securityManager.logSecurityEvent({
+        userId,
+        ipAddress,
+        userAgent,
+        action: "security_error",
+        resource: c2.req.path,
+        status: "failure",
+        details: { error: String(error) },
+        riskLevel: "high"
+      });
+      await next();
+    }
+  };
+}
 const app = new Hono2();
+app.use("*", async (c2, next) => {
+  const securityMiddleware = createSecurityMiddleware(c2.env);
+  return await securityMiddleware(c2, next);
+});
 const KNOWLEDGE_BASE = [
   {
     feature_module: "Authentication",
@@ -26124,11 +27663,394 @@ app.all("/api/populate-db", async (c2) => {
   }
   return c2.json({ success: true, entriesCount: KNOWLEDGE_BASE.length });
 });
+app.all("/api/seed-enhanced-data", async (c2) => {
+  const db = c2.env.DB;
+  try {
+    console.log("Running database migrations...");
+    const migrationsExist = await db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'
+    `).first();
+    if (!migrationsExist) {
+      await db.prepare(`
+        CREATE TABLE migrations (
+          id TEXT PRIMARY KEY,
+          description TEXT,
+          executed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+    }
+    const migrationExists = await db.prepare(`
+      SELECT id FROM migrations WHERE id = '001_enhanced_knowledge_base'
+    `).first();
+    if (!migrationExists) {
+      const columns = [
+        "subcategory TEXT",
+        'difficulty_level TEXT DEFAULT "basico"',
+        "estimated_time INTEGER DEFAULT 5",
+        "prerequisites TEXT",
+        "related_features TEXT",
+        "tags TEXT",
+        "use_cases TEXT",
+        "troubleshooting TEXT",
+        "quick_action TEXT",
+        "step_by_step_guide TEXT",
+        "real_world_examples TEXT",
+        "advanced_tips TEXT",
+        "ui_elements_pt TEXT",
+        "philosophy_integration TEXT",
+        "user_rating REAL DEFAULT 0",
+        "popularity_score INTEGER DEFAULT 0",
+        "last_updated DATETIME DEFAULT CURRENT_TIMESTAMP",
+        "is_active BOOLEAN DEFAULT true"
+      ];
+      for (const column of columns) {
+        try {
+          await db.prepare(`ALTER TABLE knowledge_entries ADD COLUMN ${column}`).run();
+        } catch (error) {
+          console.log(`Column might already exist: ${column}`);
+        }
+      }
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS search_analytics (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          query TEXT NOT NULL,
+          user_id TEXT,
+          session_id TEXT,
+          results_count INTEGER,
+          clicked_result_id INTEGER,
+          clicked_position INTEGER,
+          user_satisfied BOOLEAN,
+          response_time_ms INTEGER,
+          search_type TEXT,
+          filters_used TEXT,
+          intent_detected TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS knowledge_feedback (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          knowledge_entry_id INTEGER NOT NULL,
+          user_id TEXT NOT NULL,
+          rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+          helpful BOOLEAN,
+          comment TEXT,
+          feedback_type TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS search_synonyms (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          term TEXT NOT NULL,
+          synonyms TEXT NOT NULL,
+          category TEXT,
+          language TEXT DEFAULT 'pt',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS search_intent_patterns (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          pattern TEXT NOT NULL,
+          intent_type TEXT NOT NULL,
+          response_template TEXT,
+          confidence_score REAL DEFAULT 1.0,
+          language TEXT DEFAULT 'pt',
+          is_active BOOLEAN DEFAULT true,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+      await db.prepare(`
+        INSERT INTO migrations (id, description) VALUES 
+        ('001_enhanced_knowledge_base', 'Add enhanced fields and analytics tables for knowledge base')
+      `).run();
+    }
+    const seeder = new KnowledgeDataSeeder(db);
+    await seeder.seedEnhancedData();
+    return c2.json({
+      success: true,
+      message: "Enhanced knowledge base data seeded successfully",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    });
+  } catch (error) {
+    console.error("Enhanced seeding error:", error);
+    return c2.json({
+      success: false,
+      error: error.message,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    }, 500);
+  }
+});
 app.get("/api/filters", async (c2) => {
   const db = c2.env.DB;
   const result = await db.prepare("SELECT DISTINCT category FROM knowledge_entries ORDER BY category").all();
   const categories = result.results.map((row) => row.category);
   return c2.json({ categories });
+});
+app.post("/api/search/enhanced", async (c2) => {
+  const body = await c2.req.json();
+  const { query, language = "pt", category, difficulty, estimated_time } = body;
+  const db = c2.env.DB;
+  const openai = new OpenAI({
+    apiKey: c2.env.OPENAI_API_KEY
+  });
+  try {
+    const searchEngine = new EnhancedSearchEngine(db, openai);
+    const searchRequest = {
+      query,
+      language,
+      filters: {
+        category,
+        difficulty,
+        estimated_time
+      }
+    };
+    const authCookie = getCookie(c2, AUTH_COOKIE_NAME);
+    if (authCookie) {
+      try {
+        const session = await db.prepare("SELECT user_id FROM sessions WHERE id = ?").bind(authCookie).first();
+        if (session) {
+          searchRequest.user_id = session.user_id;
+        }
+      } catch (error) {
+        console.log("Could not get user from session:", error);
+      }
+    }
+    const searchResponse = await searchEngine.search(searchRequest);
+    if (searchResponse.results.length > 0) {
+      const context = searchResponse.results.slice(0, 3).map(
+        (entry) => `Funcionalidade: ${entry.title}
+Ação Rápida: ${entry.quick_action}
+Elementos da Interface: ${entry.ui_elements_pt.join(", ")}
+Conteúdo: ${entry.content_text}
+` + (entry.troubleshooting ? `Solução de Problemas: ${entry.troubleshooting}
+` : "") + (entry.philosophy_integration ? `Filosofia Modo Caverna: ${entry.philosophy_integration}
+` : "")
+      ).join("\n---\n");
+      const systemPrompt = `Você é o assistente oficial do Modo Caverna, uma plataforma de transformação pessoal. 
+      Responda com base na documentação fornecida, mantendo o tom motivacional e a filosofia da "alcatéia" (pack de lobos).
+      Use elementos da interface em português e seja prático e direto.
+      Se for uma pergunta "como fazer", forneça passos claros.
+      Se for um problema, foque nas soluções mais prováveis primeiro.`;
+      const userPrompt = `Pergunta: "${query}"
+
+Documentação do Modo Caverna:
+${context}`;
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 600
+      });
+      const aiAnswer = completion.choices[0].message.content || "Não consegui gerar uma resposta baseada na documentação disponível.";
+      return c2.json({
+        answer: aiAnswer,
+        searchResults: searchResponse,
+        intent: searchResponse.intent,
+        suggestions: searchResponse.suggestions
+      });
+    } else {
+      return c2.json({
+        answer: "Não encontrei informações específicas sobre isso na documentação do Modo Caverna. Você pode tentar reformular sua pergunta ou entrar em contato com o suporte.",
+        searchResults: searchResponse,
+        intent: searchResponse.intent,
+        suggestions: ["login", "desafio caverna", "rituais", "comunidade", "suporte"]
+      });
+    }
+  } catch (error) {
+    console.error("Enhanced search error:", error);
+    return c2.json({
+      answer: "Ocorreu um erro ao processar sua pergunta. Tente novamente em alguns instantes.",
+      searchResults: { results: [], intent: "error", suggestions: [], total_results: 0, response_time_ms: 0 },
+      intent: "error",
+      suggestions: []
+    }, 500);
+  }
+});
+app.post("/api/knowledge/:id/feedback", authMiddleware, async (c2) => {
+  const knowledgeId = parseInt(c2.req.param("id"));
+  const { rating, helpful, comment, feedback_type } = await c2.req.json();
+  const user = c2.get("user");
+  if (!knowledgeId || isNaN(knowledgeId)) {
+    return c2.json({ error: "Invalid knowledge entry ID" }, 400);
+  }
+  if (rating && (rating < 1 || rating > 5)) {
+    return c2.json({ error: "Rating must be between 1 and 5" }, 400);
+  }
+  try {
+    const db = c2.env.DB;
+    const openai = new OpenAI({
+      apiKey: c2.env.OPENAI_API_KEY
+    });
+    const searchEngine = new EnhancedSearchEngine(db, openai);
+    await searchEngine.submitFeedback({
+      knowledge_entry_id: knowledgeId,
+      user_id: user.id,
+      rating,
+      helpful,
+      comment,
+      feedback_type: feedback_type || "rating"
+    });
+    return c2.json({ success: true, message: "Feedback enviado com sucesso!" });
+  } catch (error) {
+    console.error("Feedback submission error:", error);
+    return c2.json({ error: "Erro ao enviar feedback" }, 500);
+  }
+});
+app.get("/api/admin/knowledge/analytics", authMiddleware, async (c2) => {
+  const user = c2.get("user");
+  if (!user.isAdmin) {
+    return c2.json({ error: "Acesso negado. Apenas administradores podem acessar analytics." }, 403);
+  }
+  try {
+    const db = c2.env.DB;
+    const searchStats = await db.prepare(`
+      SELECT 
+        COUNT(*) as total_searches,
+        COUNT(DISTINCT user_id) as unique_users,
+        AVG(response_time_ms) as avg_response_time,
+        COUNT(CASE WHEN user_satisfied = true THEN 1 END) as satisfied_searches,
+        COUNT(CASE WHEN user_satisfied = false THEN 1 END) as unsatisfied_searches
+      FROM search_analytics 
+      WHERE created_at >= datetime('now', '-30 days')
+    `).first();
+    const popularQueries = await db.prepare(`
+      SELECT query, COUNT(*) as frequency, intent_detected
+      FROM search_analytics 
+      WHERE created_at >= datetime('now', '-30 days')
+      GROUP BY query
+      ORDER BY frequency DESC
+      LIMIT 10
+    `).all();
+    const contentPerformance = await db.prepare(`
+      SELECT 
+        ke.id,
+        ke.feature_module || ' - ' || ke.functionality as title,
+        ke.category,
+        ke.user_rating,
+        ke.popularity_score,
+        COUNT(kf.id) as feedback_count,
+        AVG(kf.rating) as avg_feedback_rating
+      FROM knowledge_entries ke
+      LEFT JOIN knowledge_feedback kf ON ke.id = kf.knowledge_entry_id
+      WHERE ke.is_active = true
+      GROUP BY ke.id
+      ORDER BY ke.popularity_score DESC, ke.user_rating DESC
+      LIMIT 15
+    `).all();
+    const recentFeedback = await db.prepare(`
+      SELECT 
+        kf.*,
+        ke.feature_module || ' - ' || ke.functionality as entry_title
+      FROM knowledge_feedback kf
+      JOIN knowledge_entries ke ON kf.knowledge_entry_id = ke.id
+      ORDER BY kf.created_at DESC
+      LIMIT 20
+    `).all();
+    const intentDistribution = await db.prepare(`
+      SELECT 
+        intent_detected,
+        COUNT(*) as count,
+        ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM search_analytics WHERE created_at >= datetime('now', '-30 days')), 2) as percentage
+      FROM search_analytics 
+      WHERE created_at >= datetime('now', '-30 days') AND intent_detected IS NOT NULL
+      GROUP BY intent_detected
+      ORDER BY count DESC
+    `).all();
+    return c2.json({
+      search_stats: {
+        total_searches: searchStats?.total_searches || 0,
+        unique_users: searchStats?.unique_users || 0,
+        avg_response_time: Math.round(searchStats?.avg_response_time || 0),
+        satisfaction_rate: searchStats?.total_searches > 0 ? Math.round(searchStats.satisfied_searches / searchStats.total_searches * 100) : 0,
+        satisfied_searches: searchStats?.satisfied_searches || 0,
+        unsatisfied_searches: searchStats?.unsatisfied_searches || 0
+      },
+      popular_queries: popularQueries.results || [],
+      content_performance: contentPerformance.results || [],
+      recent_feedback: recentFeedback.results || [],
+      intent_distribution: intentDistribution.results || [],
+      generated_at: (/* @__PURE__ */ new Date()).toISOString()
+    });
+  } catch (error) {
+    console.error("Analytics error:", error);
+    return c2.json({ error: "Erro ao carregar analytics" }, 500);
+  }
+});
+app.get("/api/knowledge/popular", async (c2) => {
+  try {
+    const db = c2.env.DB;
+    const results = await db.prepare(`
+      SELECT 
+        id,
+        feature_module || ' - ' || functionality as title,
+        category,
+        subcategory,
+        difficulty_level,
+        estimated_time,
+        quick_action,
+        ui_elements_pt,
+        user_rating,
+        popularity_score
+      FROM knowledge_entries 
+      WHERE is_active = true
+      ORDER BY popularity_score DESC, user_rating DESC
+      LIMIT 10
+    `).all();
+    const popularEntries = results.results.map((entry) => ({
+      ...entry,
+      ui_elements_pt: entry.ui_elements_pt ? JSON.parse(entry.ui_elements_pt) : []
+    }));
+    return c2.json({ popular_entries: popularEntries });
+  } catch (error) {
+    console.error("Popular content error:", error);
+    return c2.json({ error: "Erro ao carregar conteúdo popular" }, 500);
+  }
+});
+app.get("/api/search/suggestions", async (c2) => {
+  try {
+    const db = c2.env.DB;
+    const suggestions = await db.prepare(`
+      SELECT query, COUNT(*) as frequency
+      FROM search_analytics 
+      WHERE created_at >= datetime('now', '-7 days')
+        AND results_count > 0
+      GROUP BY query
+      ORDER BY frequency DESC
+      LIMIT 8
+    `).all();
+    const defaultSuggestions = [
+      "como fazer login",
+      "desafio caverna",
+      "configurar rituais",
+      "comunidade",
+      "recuperar senha",
+      "central caverna"
+    ];
+    const allSuggestions = [
+      ...suggestions.results?.map((s2) => s2.query) || [],
+      ...defaultSuggestions
+    ];
+    const uniqueSuggestions = [...new Set(allSuggestions)].slice(0, 8);
+    return c2.json({ suggestions: uniqueSuggestions });
+  } catch (error) {
+    console.error("Suggestions error:", error);
+    return c2.json({
+      suggestions: [
+        "como fazer login",
+        "desafio caverna",
+        "configurar rituais",
+        "comunidade",
+        "recuperar senha",
+        "central caverna"
+      ]
+    });
+  }
 });
 app.post("/api/search", zValidator("json", SearchRequestSchema), async (c2) => {
   const { query, language = "en", category } = c2.req.valid("json");
@@ -26854,11 +28776,36 @@ app.post("/api/v1/images/generate", authMiddleware, zValidator("json", ImageGene
     const promptEngine = new PromptTemplateEngineImpl();
     const storageManager = new AssetStorageManager(c2.env.IMAGE_BUCKET);
     const database = new DatabaseLayer(c2.env.DB);
+    const securityManager = new SecurityManager(c2.env);
     const validation = promptEngine.validateParameters(params);
     if (!validation.isValid) {
       return c2.json({
         success: false,
         error: `Invalid parameters: ${validation.errors.join(", ")}`,
+        status: "FAILED"
+      }, 400);
+    }
+    const prompt = promptEngine.buildPrompt(params);
+    const contentSafety = await securityManager.validatePromptContent(prompt);
+    if (!contentSafety.safe) {
+      await securityManager.logSecurityEvent({
+        userId: user.id,
+        ipAddress: c2.req.header("CF-Connecting-IP") || "unknown",
+        userAgent: c2.req.header("User-Agent") || "unknown",
+        action: "content_safety_violation",
+        resource: "/api/v1/images/generate",
+        status: "blocked",
+        details: {
+          originalPrompt: prompt,
+          flags: contentSafety.flags,
+          confidence: contentSafety.confidence
+        },
+        riskLevel: "high"
+      });
+      return c2.json({
+        success: false,
+        error: "Content does not meet safety guidelines",
+        details: contentSafety.flags,
         status: "FAILED"
       }, 400);
     }
@@ -27484,6 +29431,78 @@ app.post("/api/v1/admin/images/maintenance", authMiddleware, adminMiddleware, as
   } catch (error) {
     console.error("Maintenance error:", error);
     return c2.json({ error: "Internal server error" }, 500);
+  }
+});
+app.get("/health", async (c2) => {
+  const healthCheckHandler = createHealthCheckHandler(c2.env);
+  return await healthCheckHandler();
+});
+app.get("/metrics", async (c2) => {
+  const metricsHandler = createMetricsHandler(c2.env);
+  return await metricsHandler();
+});
+app.get("/api/v1/admin/security/report", authMiddleware, async (c2) => {
+  const user = c2.get("user");
+  if (!user.isAdmin) {
+    return c2.json({ error: "Insufficient permissions" }, 403);
+  }
+  try {
+    const securityManager = new SecurityManager(c2.env);
+    const report2 = await securityManager.generateSecurityReport();
+    return c2.json({
+      success: true,
+      data: report2,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    });
+  } catch (error) {
+    console.error("Security report generation failed:", error);
+    return c2.json({
+      success: false,
+      error: "Failed to generate security report"
+    }, 500);
+  }
+});
+app.get("/api/v1/admin/security/audit", authMiddleware, async (c2) => {
+  const user = c2.get("user");
+  if (!user.isAdmin) {
+    return c2.json({ error: "Insufficient permissions" }, 403);
+  }
+  try {
+    const limit2 = parseInt(c2.req.query("limit") || "50");
+    const offset = parseInt(c2.req.query("offset") || "0");
+    const riskLevel = c2.req.query("risk_level");
+    const action = c2.req.query("action");
+    let query = `
+      SELECT * FROM SecurityAuditLog 
+      WHERE 1=1
+    `;
+    const params = [];
+    if (riskLevel) {
+      query += " AND risk_level = ?";
+      params.push(riskLevel);
+    }
+    if (action) {
+      query += " AND action = ?";
+      params.push(action);
+    }
+    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?";
+    params.push(limit2, offset);
+    const result = await c2.env.IMAGE_DB.prepare(query).bind(...params).all();
+    return c2.json({
+      success: true,
+      data: result.results || [],
+      pagination: {
+        limit: limit2,
+        offset,
+        total: result.results?.length || 0
+      }
+    });
+  } catch (error) {
+    console.error("Security audit query failed:", error);
+    return c2.json({
+      success: false,
+      error: "Failed to retrieve audit logs"
+    }, 500);
   }
 });
 app.get("*", async (c2) => {
