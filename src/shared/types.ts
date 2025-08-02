@@ -20,6 +20,7 @@ export const SearchRequestSchema = z.object({
   query: z.string().min(1),
   language: z.enum(['en', 'pt']).optional().default('en'),
   category: z.string().optional(),
+  user_id: z.string().optional(),
 });
 
 export type SearchRequest = z.infer<typeof SearchRequestSchema>;

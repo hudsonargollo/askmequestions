@@ -12668,7 +12668,8 @@ const KnowledgeEntrySchema = z$1.object({
 const SearchRequestSchema = z$1.object({
   query: z$1.string().min(1),
   language: z$1.enum(["en", "pt"]).optional().default("en"),
-  category: z$1.string().optional()
+  category: z$1.string().optional(),
+  user_id: z$1.string().optional()
 });
 z$1.object({
   answer: z$1.string(),
@@ -13582,6 +13583,638 @@ class KnowledgeDataSeeder {
         VALUES (?, ?, ?, 'pt', true)
       `).bind(pattern.pattern, pattern.intent_type, pattern.response_template).run();
     }
+  }
+}
+const CORRECTED_MODO_CAVERNA_KNOWLEDGE = [
+  // 1. Flow Produtividade - Core transformation tool
+  {
+    feature_module: "Flow Produtividade",
+    functionality: "Sistema completo de foco e produtividade",
+    description: "Ferramenta principal para ativar o estado de flow e maximizar a produtividade através do foco absoluto",
+    subcategory: "flow_state",
+    difficulty_level: "intermediario",
+    estimated_time: 45,
+    prerequisites: ["onboarding_completo", "rituais_configurados"],
+    related_features: ["pomodoro", "kanban", "playlists", "checklist_flow"],
+    tags: ["flow", "foco", "produtividade", "pomodoro", "kanban", "concentracao"],
+    use_cases: [
+      "Sessão de trabalho profundo de 2-4 horas",
+      "Estudo intensivo para provas ou certificações",
+      "Desenvolvimento de projetos pessoais importantes",
+      "Escrita de relatórios ou documentos complexos"
+    ],
+    ui_elements: "Checklist de Ativação do FLOW, Timer Pomodoro, Quadro Kanban, Player de Playlists",
+    ui_elements_pt: ["Checklist de Ativação", "Timer Pomodoro", "Quadro Kanban", "Player de Música", "Contador de Minutos"],
+    user_questions_en: "How to activate flow state? How to use pomodoro? How to manage tasks?",
+    user_questions_pt: [
+      "Como ativar o estado de flow?",
+      "Como usar o pomodoro?",
+      "Como gerenciar tarefas no Kanban?",
+      "Qual playlist usar para focar?",
+      "Como registrar minutos de foco?"
+    ],
+    category: "Produtividade",
+    content_text: "O Flow Produtividade é o coração do sistema Modo Caverna, implementando a filosofia PROPÓSITO > FOCO > PROGRESSO. Inclui: Checklist de Ativação do FLOW para preparar sua mente, Pomodoro com registro preciso de minutos em foco, sistema Kanban para gerenciamento visual de tarefas, e playlists especializadas para estudar, trabalhar e focar. Esta ferramenta elimina distrações e direciona toda energia para o que realmente importa.",
+    quick_action: "Ativar checklist de flow e iniciar sessão Pomodoro",
+    step_by_step_guide: [
+      "1. Abra o Flow Produtividade no menu principal",
+      "2. Complete o Checklist de Ativação do FLOW (eliminar distrações, definir objetivo, preparar ambiente)",
+      "3. Selecione a playlist adequada para sua atividade",
+      "4. Configure o timer Pomodoro (25 min trabalho + 5 min pausa)",
+      "5. Mova tarefas no Kanban conforme progresso",
+      "6. Registre minutos de foco ao final da sessão"
+    ],
+    real_world_examples: [
+      "Desenvolvedor usando Flow para 4h de programação ininterrupta",
+      "Estudante preparando TCC com sessões de 2h diárias",
+      "Empreendedor criando plano de negócios em estado de flow"
+    ],
+    troubleshooting: "Se não conseguir manter o foco: 1) Verifique se completou o checklist de ativação, 2) Elimine todas as distrações do ambiente, 3) Ajuste o tempo do Pomodoro conforme sua capacidade atual, 4) Use playlist adequada para o tipo de trabalho",
+    advanced_tips: [
+      "Combine Flow com Rituais Matinais para máxima efetividade",
+      "Use métricas de minutos focados para acompanhar evolução",
+      "Experimente diferentes durações de Pomodoro até encontrar seu ritmo ideal",
+      "Integre Flow com Gestão de Metas para alinhamento estratégico"
+    ],
+    philosophy_integration: "O Flow representa a essência do Modo Caverna - o momento onde você se torna um com sua missão, eliminando o ruído externo e canalizando toda sua energia para o progresso. É aqui que a alcateia se fortalece através do foco individual. No Flow, você não está apenas trabalhando, está forjando sua transformação.",
+    modo_caverna_level: 3,
+    level_name: "O Chamado",
+    state_of_mind: "Guerreiro"
+  }
+];
+class CorrectedKnowledgeSeeder {
+  constructor(db) {
+    this.db = db;
+  }
+  async seedCorrectedData() {
+    console.log("Starting corrected Modo Caverna knowledge base seeding...");
+    await this.createEnhancedTable();
+    await this.db.prepare("DELETE FROM knowledge_entries").run();
+    for (const entry of CORRECTED_MODO_CAVERNA_KNOWLEDGE) {
+      await this.insertEnhancedEntry(entry);
+    }
+    console.log(`Seeded ${CORRECTED_MODO_CAVERNA_KNOWLEDGE.length} corrected knowledge entries`);
+  }
+  async createEnhancedTable() {
+    await this.db.prepare(`
+      CREATE TABLE IF NOT EXISTS knowledge_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        feature_module TEXT NOT NULL,
+        functionality TEXT NOT NULL,
+        description TEXT NOT NULL,
+        ui_elements TEXT,
+        user_questions_en TEXT,
+        user_questions_pt TEXT,
+        category TEXT NOT NULL,
+        content_text TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        
+        -- Enhanced fields
+        subcategory TEXT,
+        difficulty_level TEXT CHECK(difficulty_level IN ('basico', 'intermediario', 'avancado')),
+        estimated_time INTEGER,
+        prerequisites TEXT, -- JSON array
+        related_features TEXT, -- JSON array
+        tags TEXT, -- JSON array
+        use_cases TEXT, -- JSON array
+        ui_elements_pt TEXT, -- JSON array
+        user_questions_pt_array TEXT, -- JSON array
+        quick_action TEXT,
+        step_by_step_guide TEXT, -- JSON array
+        real_world_examples TEXT, -- JSON array
+        troubleshooting TEXT,
+        advanced_tips TEXT, -- JSON array
+        philosophy_integration TEXT,
+        popularity_score INTEGER DEFAULT 0,
+        user_rating REAL DEFAULT 0.0,
+        is_active BOOLEAN DEFAULT TRUE,
+        
+        -- Official Modo Caverna fields
+        modo_caverna_level INTEGER CHECK(modo_caverna_level BETWEEN 1 AND 7),
+        level_name TEXT,
+        state_of_mind TEXT
+      )
+    `).run();
+  }
+  async insertEnhancedEntry(entry) {
+    await this.db.prepare(`
+      INSERT INTO knowledge_entries (
+        feature_module, functionality, description, ui_elements,
+        user_questions_en, user_questions_pt, category, content_text,
+        subcategory, difficulty_level, estimated_time, prerequisites,
+        related_features, tags, use_cases, ui_elements_pt,
+        user_questions_pt_array, quick_action, step_by_step_guide,
+        real_world_examples, troubleshooting, advanced_tips,
+        philosophy_integration, popularity_score, user_rating,
+        is_active, modo_caverna_level, level_name, state_of_mind
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      entry.feature_module,
+      entry.functionality,
+      entry.description,
+      entry.ui_elements,
+      entry.user_questions_en,
+      entry.user_questions_pt.join(" | "),
+      entry.category,
+      entry.content_text,
+      entry.subcategory,
+      entry.difficulty_level,
+      entry.estimated_time,
+      JSON.stringify(entry.prerequisites),
+      JSON.stringify(entry.related_features),
+      JSON.stringify(entry.tags),
+      JSON.stringify(entry.use_cases),
+      JSON.stringify(entry.ui_elements_pt),
+      JSON.stringify(entry.user_questions_pt),
+      entry.quick_action,
+      JSON.stringify(entry.step_by_step_guide),
+      JSON.stringify(entry.real_world_examples),
+      entry.troubleshooting,
+      JSON.stringify(entry.advanced_tips),
+      entry.philosophy_integration,
+      85,
+      // Default popularity score
+      4.5,
+      // Default user rating
+      true,
+      // is_active
+      entry.modo_caverna_level,
+      entry.level_name,
+      entry.state_of_mind
+    ).run();
+  }
+}
+const INTENT_CONFIGURATIONS = {
+  "how_to": {
+    poses: ["teaching", "pointing", "demonstrating", "guiding"],
+    outfits: ["guide", "mentor", "instructor"],
+    props: ["scroll", "pointer", "tools"],
+    backgrounds: ["cave_classroom", "tutorial_space"]
+  },
+  "troubleshooting": {
+    poses: ["problem_solving", "thinking", "analyzing", "focused"],
+    outfits: ["focused", "technical", "problem_solver"],
+    props: ["magnifying_glass", "tools", "diagnostic_equipment"],
+    backgrounds: ["workshop", "analysis_cave"]
+  },
+  "what_is": {
+    poses: ["explaining", "wise", "contemplative", "teaching"],
+    outfits: ["wise", "philosopher", "sage"],
+    props: ["book", "crystal_ball", "ancient_scroll"],
+    backgrounds: ["library_cave", "wisdom_chamber"]
+  },
+  "motivation": {
+    poses: ["encouraging", "inspiring", "powerful", "determined"],
+    outfits: ["warrior", "leader", "motivator"],
+    props: ["flag", "torch", "motivational_symbol"],
+    backgrounds: ["mountain_peak", "victory_cave"]
+  },
+  "celebration": {
+    poses: ["celebrating", "victorious", "proud", "joyful"],
+    outfits: ["ceremonial", "victory", "festive"],
+    props: ["trophy", "celebration_items", "achievement_badge"],
+    backgrounds: ["celebration_cave", "achievement_hall"]
+  },
+  "guidance": {
+    poses: ["guiding", "leading", "showing_path", "protective"],
+    outfits: ["guide", "pathfinder", "protector"],
+    props: ["compass", "map", "lantern"],
+    backgrounds: ["path_cave", "journey_landscape"]
+  }
+};
+const EMOTIONAL_MODIFIERS = {
+  "encouraging": {
+    lighting: "warm_bright",
+    expression: "supportive_smile",
+    posture: "open_welcoming",
+    colors: ["warm_orange", "encouraging_yellow"]
+  },
+  "serious": {
+    lighting: "focused_dramatic",
+    expression: "determined_serious",
+    posture: "strong_confident",
+    colors: ["deep_red", "serious_gray"]
+  },
+  "celebratory": {
+    lighting: "bright_festive",
+    expression: "joyful_proud",
+    posture: "victorious_raised",
+    colors: ["celebration_gold", "victory_red"]
+  },
+  "focused": {
+    lighting: "concentrated_spotlight",
+    expression: "intense_focused",
+    posture: "alert_ready",
+    colors: ["focus_blue", "concentration_purple"]
+  },
+  "compassionate": {
+    lighting: "soft_gentle",
+    expression: "understanding_kind",
+    posture: "caring_supportive",
+    colors: ["gentle_blue", "compassionate_green"]
+  },
+  "energetic": {
+    lighting: "dynamic_bright",
+    expression: "excited_energetic",
+    posture: "active_dynamic",
+    colors: ["energy_red", "dynamic_orange"]
+  }
+};
+const LEVEL_CHARACTERISTICS = {
+  1: {
+    // O Despertar (The Awakening) - Inconformado (Nonconformist)
+    characterRole: "guide",
+    relationship: "teacher_student",
+    complexity: "simple",
+    elements: ["basic_cave", "starting_journey", "awakening_flame"],
+    state_of_mind: "inconformado",
+    description: "Initial discomfort and questioning"
+  },
+  2: {
+    // A Ruptura (The Rupture) - Explorador (Explorer)
+    characterRole: "mentor",
+    relationship: "mentor_apprentice",
+    complexity: "developing",
+    elements: ["exploration_tools", "breaking_chains", "discovery_elements"],
+    state_of_mind: "explorador",
+    description: "Breaking old patterns and limitations"
+  },
+  3: {
+    // O Chamado (The Call) - Guerreiro (Warrior)
+    characterRole: "trainer",
+    relationship: "trainer_warrior",
+    complexity: "intermediate",
+    elements: ["warrior_gear", "strategic_tools", "battle_preparation"],
+    state_of_mind: "guerreiro",
+    description: "Recognizing patterns and strategic thinking"
+  },
+  4: {
+    // A Descoberta (The Discovery) - Estrategista (Strategist)
+    characterRole: "advisor",
+    relationship: "advisor_strategist",
+    complexity: "advanced",
+    elements: ["strategic_maps", "planning_elements", "consistency_tools"],
+    state_of_mind: "estrategista",
+    description: "Understanding consistency and daily practice"
+  },
+  5: {
+    // O Discernimento (The Discernment) - Sábio (Wise)
+    characterRole: "companion",
+    relationship: "peer_wise",
+    complexity: "sophisticated",
+    elements: ["wisdom_artifacts", "discernment_symbols", "knowledge_application"],
+    state_of_mind: "sabio",
+    description: "Developing wisdom to apply knowledge"
+  },
+  6: {
+    // A Ascensão (The Ascension) - Mestre (Master)
+    characterRole: "peer",
+    relationship: "master_master",
+    complexity: "expert",
+    elements: ["mastery_symbols", "ascension_elements", "self_driven_tools"],
+    state_of_mind: "mestre",
+    description: "Becoming self-driven and unstoppable"
+  },
+  7: {
+    // A Lenda (The Legend) - Lenda (Legend)
+    characterRole: "fellow_legend",
+    relationship: "legend_legend",
+    complexity: "legendary",
+    elements: ["legend_regalia", "inspiration_symbols", "transformation_embodiment"],
+    state_of_mind: "lenda",
+    description: "Embodying transformation and inspiring others"
+  }
+};
+const CULTURAL_ELEMENTS = {
+  expressions: {
+    encouraging: ["sorriso_brasileiro", "jeitinho_positivo", "energia_carioca"],
+    serious: ["determinacao_nordestina", "foco_paulista", "garra_gaucha"],
+    celebratory: ["festa_brasileira", "alegria_carnaval", "vitoria_futebol"],
+    focused: ["concentracao_brasileira", "foco_determinado", "atencao_plena"],
+    compassionate: ["acolhimento_brasileiro", "empatia_calorosa", "compreensao_humana"],
+    energetic: ["energia_tropical", "vitalidade_brasileira", "dinamismo_carioca"]
+  },
+  props: {
+    cultural: ["bandeira_brasil", "elementos_regionais", "simbolos_nacionais"]
+  },
+  backgrounds: {
+    cultural: ["ambiente_brasileiro", "cenario_tropical", "paisagem_nacional"]
+  }
+};
+class ContextualImageEngine {
+  constructor() {
+    this.userPreferences = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Generate contextual image parameters based on user query and context
+   */
+  generateContextualImage(request2, userId) {
+    const baseConfig = this.getIntentConfiguration(request2.intent);
+    const emotionalConfig = this.applyEmotionalTone(request2.emotionalTone);
+    const levelConfig = this.getLevelCharacteristics(request2.userLevel || 1);
+    const culturalConfig = this.addCulturalElements(request2);
+    const personalizedConfig = userId ? this.applyPersonalization(userId, baseConfig) : baseConfig;
+    return this.combineConfigurations(
+      personalizedConfig,
+      emotionalConfig,
+      levelConfig,
+      culturalConfig,
+      request2
+    );
+  }
+  /**
+   * Analyze user's emotional context from their activity
+   */
+  analyzeUserEmotionalContext(userId, recentActivity) {
+    const searchPattern = this.analyzeSearchPatterns(recentActivity);
+    const timeOfDay = this.getCurrentTimeContext();
+    const recentProgress = this.assessRecentProgress(recentActivity);
+    const streakStatus = this.checkStreakStatus(userId, recentActivity);
+    const engagementLevel = this.measureEngagementLevel(recentActivity);
+    return {
+      recentActivity: recentProgress,
+      searchPattern,
+      timeOfDay,
+      streakStatus,
+      engagementLevel
+    };
+  }
+  /**
+   * Learn from user interactions to improve personalization
+   */
+  learnFromInteraction(userId, imageId, interaction) {
+    const preferences = this.userPreferences.get(userId) || this.createDefaultPreferences();
+    if (interaction.viewTime > 5e3) {
+      preferences.engagementPatterns.longestViewTimes.push(imageId);
+    }
+    if (interaction.shared) {
+      preferences.engagementPatterns.mostSharedImages.push(imageId);
+    }
+    if (interaction.liked || interaction.viewTime > 3e3) {
+      preferences.engagementPatterns.mostViewedImages.push(imageId);
+    }
+    if (interaction.liked) {
+      const imageStyle = this.extractImageStyle(imageId);
+      if (imageStyle && !preferences.favoriteCharacterStyles.includes(imageStyle)) {
+        preferences.favoriteCharacterStyles.push(imageStyle);
+      }
+    }
+    this.userPreferences.set(userId, preferences);
+  }
+  /**
+   * Get smart suggestions for image generation based on context
+   */
+  getSmartSuggestions(query, category) {
+    const suggestions = [];
+    const detectedIntent = this.detectQueryIntent(query);
+    const emotionalTones = ["encouraging", "focused", "energetic"];
+    emotionalTones.forEach((tone) => {
+      suggestions.push({
+        query,
+        intent: detectedIntent,
+        emotionalTone: tone,
+        knowledgeCategory: category,
+        timeOfDay: this.getCurrentTimeContext()
+      });
+    });
+    return suggestions;
+  }
+  // Private helper methods
+  getIntentConfiguration(intent) {
+    return INTENT_CONFIGURATIONS[intent] || INTENT_CONFIGURATIONS["guidance"];
+  }
+  applyEmotionalTone(tone) {
+    return EMOTIONAL_MODIFIERS[tone] || EMOTIONAL_MODIFIERS["encouraging"];
+  }
+  getLevelCharacteristics(level) {
+    return LEVEL_CHARACTERISTICS[level] || LEVEL_CHARACTERISTICS[1];
+  }
+  addCulturalElements(request2) {
+    const cultural = CULTURAL_ELEMENTS;
+    return {
+      expressions: cultural.expressions[request2.emotionalTone] || cultural.expressions.encouraging,
+      props: cultural.props.cultural,
+      backgrounds: cultural.backgrounds.cultural
+    };
+  }
+  applyPersonalization(userId, baseConfig) {
+    const preferences = this.userPreferences.get(userId);
+    if (!preferences) return baseConfig;
+    const personalizedConfig = { ...baseConfig };
+    if (preferences.favoriteCharacterStyles.length > 0) {
+      personalizedConfig.preferredStyles = preferences.favoriteCharacterStyles;
+    }
+    return personalizedConfig;
+  }
+  combineConfigurations(baseConfig, emotionalConfig, levelConfig, culturalConfig, request2) {
+    const pose = this.selectOptimalPose(baseConfig, emotionalConfig, levelConfig);
+    const outfit = this.selectOptimalOutfit(baseConfig, levelConfig, request2);
+    const footwear = this.selectOptimalFootwear(outfit, levelConfig);
+    const prop = this.selectOptimalProp(baseConfig, culturalConfig, request2);
+    return {
+      pose,
+      outfit,
+      footwear,
+      prop,
+      frameType: this.determineFrameType(request2),
+      frameId: this.generateFrameId(request2)
+    };
+  }
+  selectOptimalPose(baseConfig, emotionalConfig, levelConfig) {
+    const availablePoses = baseConfig.poses || ["default"];
+    const emotionalPreference = emotionalConfig.posture;
+    const levelRole = levelConfig.characterRole;
+    return this.findBestMatch(availablePoses, [emotionalPreference, levelRole]) || availablePoses[0];
+  }
+  selectOptimalOutfit(baseConfig, levelConfig, request2) {
+    const availableOutfits = baseConfig.outfits || ["default"];
+    const levelRole = levelConfig.characterRole;
+    const userLevel = request2.userLevel || 1;
+    if (userLevel >= 6) {
+      return this.findBestMatch(availableOutfits, ["mestre", "lenda", "legend", levelRole]) || availableOutfits[0];
+    } else if (userLevel >= 4) {
+      return this.findBestMatch(availableOutfits, ["estrategista", "sabio", "wise", "strategist", levelRole]) || availableOutfits[0];
+    } else if (userLevel >= 3) {
+      return this.findBestMatch(availableOutfits, ["guerreiro", "warrior", "trainer", levelRole]) || availableOutfits[0];
+    } else if (userLevel >= 2) {
+      return this.findBestMatch(availableOutfits, ["explorador", "explorer", "mentor", levelRole]) || availableOutfits[0];
+    } else {
+      return this.findBestMatch(availableOutfits, ["inconformado", "guide", "mentor", levelRole]) || availableOutfits[0];
+    }
+  }
+  selectOptimalFootwear(_outfit, levelConfig) {
+    const levelComplexity = levelConfig.complexity;
+    switch (levelComplexity) {
+      case "legendary":
+        return "lenda_boots";
+      // A Lenda
+      case "expert":
+        return "mestre_boots";
+      // A Ascensão
+      case "sophisticated":
+        return "sabio_boots";
+      // O Discernimento
+      case "advanced":
+        return "estrategista_boots";
+      // A Descoberta
+      case "intermediate":
+        return "guerreiro_boots";
+      // O Chamado
+      case "developing":
+        return "explorador_boots";
+      // A Ruptura
+      default:
+        return "inconformado_boots";
+    }
+  }
+  selectOptimalProp(baseConfig, culturalConfig, request2) {
+    const availableProps = baseConfig.props || [];
+    const culturalProps = culturalConfig.props || [];
+    const allProps = [...availableProps, ...culturalProps];
+    if (request2.intent === "motivation") {
+      return this.findBestMatch(allProps, ["flag", "torch", "frase_motivacional_pt"]);
+    } else if (request2.intent === "celebration") {
+      return this.findBestMatch(allProps, ["trophy", "festa_brasileira", "achievement_badge"]);
+    }
+    return allProps.length > 0 ? allProps[0] : void 0;
+  }
+  determineFrameType(request2) {
+    if (request2.userLevel && request2.userLevel <= 2) {
+      return "onboarding";
+    } else if (request2.intent === "how_to") {
+      return "sequence";
+    } else {
+      return "standard";
+    }
+  }
+  generateFrameId(request2) {
+    const frameType = this.determineFrameType(request2);
+    if (frameType === "onboarding") {
+      const levelNames = ["despertar", "ruptura", "chamado", "descoberta", "discernimento", "ascensao", "lenda"];
+      const levelName = levelNames[(request2.userLevel || 1) - 1];
+      return `onboard_${levelName}_${request2.userLevel || 1}`;
+    } else if (frameType === "sequence") {
+      return `seq_${request2.intent}_01`;
+    }
+    return void 0;
+  }
+  // Utility methods
+  findBestMatch(available, preferences) {
+    for (const pref of preferences) {
+      const match = available.find((item) => item.includes(pref) || pref.includes(item));
+      if (match) return match;
+    }
+    return void 0;
+  }
+  analyzeSearchPatterns(activity) {
+    const recentQueries = activity.filter((a2) => a2.type === "search").slice(0, 10);
+    const helpKeywords = ["como", "help", "ajuda", "não consigo"];
+    const troubleKeywords = ["erro", "problema", "bug", "não funciona"];
+    const celebrationKeywords = ["consegui", "completei", "terminei", "sucesso"];
+    const helpCount = recentQueries.filter(
+      (q2) => helpKeywords.some((keyword) => q2.query?.toLowerCase().includes(keyword))
+    ).length;
+    const troubleCount = recentQueries.filter(
+      (q2) => troubleKeywords.some((keyword) => q2.query?.toLowerCase().includes(keyword))
+    ).length;
+    const celebrationCount = recentQueries.filter(
+      (q2) => celebrationKeywords.some((keyword) => q2.query?.toLowerCase().includes(keyword))
+    ).length;
+    if (celebrationCount > 0) return "celebrating";
+    if (troubleCount > helpCount) return "troubleshooting";
+    if (helpCount > 0) return "help_seeking";
+    return "exploring";
+  }
+  getCurrentTimeContext() {
+    const hour = (/* @__PURE__ */ new Date()).getHours();
+    if (hour >= 6 && hour < 12) return "morning";
+    if (hour >= 12 && hour < 18) return "afternoon";
+    if (hour >= 18 && hour < 22) return "evening";
+    return "late_night";
+  }
+  assessRecentProgress(activity) {
+    const recentActions = activity.slice(0, 20);
+    const completions = recentActions.filter((a2) => a2.type === "completion").length;
+    const struggles = recentActions.filter((a2) => a2.type === "help_request").length;
+    const achievements = recentActions.filter((a2) => a2.type === "achievement").length;
+    if (achievements > 0) return "achieving";
+    if (completions > struggles) return "progressing";
+    if (struggles > completions) return "struggling";
+    return "stagnant";
+  }
+  checkStreakStatus(_userId, activity) {
+    const recentDays = 7;
+    const dailyActivity = this.groupActivityByDay(activity, recentDays);
+    const activeDays = Object.keys(dailyActivity).length;
+    if (activeDays >= recentDays) return "maintaining";
+    if (activeDays >= recentDays * 0.7) return "building";
+    if (activeDays >= recentDays * 0.3) return "recovering";
+    return "broken";
+  }
+  measureEngagementLevel(activity) {
+    const recentActivity = activity.slice(0, 50);
+    const engagementScore = recentActivity.reduce((score, action) => {
+      switch (action.type) {
+        case "search":
+          return score + 1;
+        case "completion":
+          return score + 3;
+        case "achievement":
+          return score + 5;
+        case "sharing":
+          return score + 4;
+        case "feedback":
+          return score + 2;
+        default:
+          return score;
+      }
+    }, 0);
+    if (engagementScore >= 50) return "high";
+    if (engagementScore >= 20) return "medium";
+    return "low";
+  }
+  groupActivityByDay(activity, days) {
+    const grouped = {};
+    const cutoffDate = /* @__PURE__ */ new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    activity.forEach((action) => {
+      const actionDate = new Date(action.timestamp);
+      if (actionDate >= cutoffDate) {
+        const dayKey = actionDate.toISOString().split("T")[0];
+        if (!grouped[dayKey]) grouped[dayKey] = [];
+        grouped[dayKey].push(action);
+      }
+    });
+    return grouped;
+  }
+  detectQueryIntent(query) {
+    const queryLower = query.toLowerCase();
+    if (queryLower.includes("como") || queryLower.includes("how")) return "how_to";
+    if (queryLower.includes("erro") || queryLower.includes("problema")) return "troubleshooting";
+    if (queryLower.includes("o que é") || queryLower.includes("what is")) return "what_is";
+    if (queryLower.includes("motivação") || queryLower.includes("desanimado")) return "motivation";
+    if (queryLower.includes("consegui") || queryLower.includes("completei")) return "celebration";
+    return "guidance";
+  }
+  createDefaultPreferences() {
+    return {
+      favoriteCharacterStyles: [],
+      preferredEmotionalTones: ["encouraging"],
+      engagementPatterns: {
+        mostViewedImages: [],
+        longestViewTimes: [],
+        mostSharedImages: []
+      },
+      progressMilestones: {
+        level: 1,
+        achievementImages: [],
+        personalizedElements: []
+      }
+    };
+  }
+  extractImageStyle(_imageId) {
+    return void 0;
   }
 }
 const getHttpHandlerExtensionConfiguration = (runtimeConfig) => {
@@ -27333,6 +27966,16 @@ function createSecurityMiddleware(env2) {
     }
   };
 }
+function isImageServiceAvailable(env2) {
+  return !!(env2.IMAGE_DB && env2.IMAGE_BUCKET);
+}
+function imageServiceUnavailableResponse() {
+  return Response.json({
+    success: false,
+    error: "Image generation service is not configured. Please contact administrator.",
+    code: "IMAGE_SERVICE_UNAVAILABLE"
+  }, { status: 503 });
+}
 const app = new Hono2();
 app.use("*", async (c2, next) => {
   const securityMiddleware = createSecurityMiddleware(c2.env);
@@ -27663,6 +28306,27 @@ app.all("/api/populate-db", async (c2) => {
   }
   return c2.json({ success: true, entriesCount: KNOWLEDGE_BASE.length });
 });
+app.all("/api/seed-corrected-data", async (c2) => {
+  const db = c2.env.DB;
+  try {
+    console.log("Seeding corrected Modo Caverna knowledge base...");
+    const seeder = new CorrectedKnowledgeSeeder(db);
+    await seeder.seedCorrectedData();
+    return c2.json({
+      success: true,
+      message: "Corrected Modo Caverna knowledge base seeded successfully",
+      methodology: "Official 7 Levels: O Despertar, A Ruptura, O Chamado, A Descoberta, O Discernimento, A Ascensão, A Lenda",
+      philosophy: "PROPÓSITO > FOCO > PROGRESSO",
+      community: "Somos uma ALCATEIA DE LOBOS ativando o Modo Caverna"
+    });
+  } catch (error) {
+    console.error("Error seeding corrected data:", error);
+    return c2.json({
+      error: "Failed to seed corrected data",
+      details: error instanceof Error ? error.message : "Unknown error"
+    }, 500);
+  }
+});
 app.all("/api/seed-enhanced-data", async (c2) => {
   const db = c2.env.DB;
   try {
@@ -27789,24 +28453,15 @@ app.get("/api/filters", async (c2) => {
   const categories = result.results.map((row) => row.category);
   return c2.json({ categories });
 });
-app.post("/api/search/enhanced", async (c2) => {
-  const body = await c2.req.json();
-  const { query, language = "pt", category, difficulty, estimated_time } = body;
+app.post("/api/search/enhanced", zValidator("json", SearchRequestSchema), async (c2) => {
+  const searchRequest = c2.req.valid("json");
   const db = c2.env.DB;
-  const openai = new OpenAI({
-    apiKey: c2.env.OPENAI_API_KEY
-  });
   try {
+    const openai = new OpenAI({
+      apiKey: c2.env.OPENAI_API_KEY
+    });
     const searchEngine = new EnhancedSearchEngine(db, openai);
-    const searchRequest = {
-      query,
-      language,
-      filters: {
-        category,
-        difficulty,
-        estimated_time
-      }
-    };
+    const imageEngine = new ContextualImageEngine();
     const authCookie = getCookie(c2, AUTH_COOKIE_NAME);
     if (authCookie) {
       try {
@@ -27818,50 +28473,151 @@ app.post("/api/search/enhanced", async (c2) => {
         console.log("Could not get user from session:", error);
       }
     }
-    const searchResponse = await searchEngine.search(searchRequest);
-    if (searchResponse.results.length > 0) {
-      const context = searchResponse.results.slice(0, 3).map(
-        (entry) => `Funcionalidade: ${entry.title}
+    const searchResult = await searchEngine.search(searchRequest);
+    let contextualImage = null;
+    if (searchRequest.user_id) {
+      try {
+        const imageContext = {
+          query: searchRequest.query,
+          intent: searchResult.intent || "guidance",
+          emotionalTone: "encouraging",
+          // Default, could be enhanced with sentiment analysis
+          knowledgeCategory: searchRequest.category || "general",
+          timeOfDay: getCurrentTimeContext(),
+          userProgress: "progressing"
+          // Could be determined from user activity
+        };
+        const imageParams = imageEngine.generateContextualImage(imageContext, searchRequest.user_id);
+        contextualImage = {
+          suggested_params: imageParams,
+          context: imageContext,
+          generation_ready: true
+        };
+      } catch (imageError) {
+        console.error("Contextual image generation error:", imageError);
+      }
+    }
+    return c2.json({
+      ...searchResult,
+      contextual_image: contextualImage,
+      enhanced_features: {
+        personalization: !!searchRequest.user_id,
+        contextual_images: !!contextualImage,
+        philosophy_integration: true
+      }
+    });
+  } catch (error) {
+    console.error("Enhanced search error:", error);
+    return c2.json({
+      error: "Enhanced search failed",
+      fallback_available: true
+    }, 500);
+  }
+});
+function getCurrentTimeContext() {
+  const hour = (/* @__PURE__ */ new Date()).getHours();
+  if (hour >= 6 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 18) return "afternoon";
+  if (hour >= 18 && hour < 22) return "evening";
+  return "late_night";
+}
+app.post("/api/search", zValidator("json", SearchRequestSchema), async (c2) => {
+  const { query, category } = c2.req.valid("json");
+  const db = c2.env.DB;
+  try {
+    const openai = new OpenAI({
+      apiKey: c2.env.OPENAI_API_KEY
+    });
+    let searchQuery = `
+      SELECT 
+        id, feature_module, functionality, description, ui_elements,
+        user_questions_en, user_questions_pt, category, content_text,
+        subcategory, difficulty_level, estimated_time, quick_action,
+        ui_elements_pt, troubleshooting, philosophy_integration
+      FROM knowledge_entries 
+      WHERE is_active = true
+    `;
+    const params = [];
+    if (category) {
+      searchQuery += ` AND category = ?`;
+      params.push(category);
+    }
+    const searchTerms = query.toLowerCase().split(" ").filter((term) => term.length > 2);
+    if (searchTerms.length > 0) {
+      const searchConditions = searchTerms.map(() => `
+        (LOWER(feature_module) LIKE ? OR 
+         LOWER(functionality) LIKE ? OR 
+         LOWER(description) LIKE ? OR 
+         LOWER(content_text) LIKE ? OR
+         LOWER(user_questions_pt) LIKE ? OR
+         LOWER(quick_action) LIKE ?)
+      `).join(" AND ");
+      searchQuery += ` AND (${searchConditions})`;
+      searchTerms.forEach((term) => {
+        const searchTerm = `%${term}%`;
+        params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      });
+    }
+    searchQuery += ` ORDER BY 
+      CASE 
+        WHEN LOWER(functionality) LIKE ? THEN 1
+        WHEN LOWER(feature_module) LIKE ? THEN 2
+        WHEN LOWER(quick_action) LIKE ? THEN 3
+        ELSE 4
+      END,
+      popularity_score DESC,
+      user_rating DESC
+      LIMIT 10`;
+    const exactMatch = `%${query.toLowerCase()}%`;
+    params.push(exactMatch, exactMatch, exactMatch);
+    const response = await db.prepare(searchQuery).bind(...params).all();
+    if (!response.results || response.results.length === 0) {
+      return c2.json({
+        answer: `Não encontrei informações específicas sobre "${query}" na base de conhecimento. Tente reformular sua pergunta ou use termos mais gerais.`,
+        searchResults: { results: [], total_results: 0, response_time_ms: 0 },
+        intent: "not_found",
+        suggestions: ["como fazer login", "desafio caverna", "configurar rituais"]
+      });
+    }
+    const context = response.results.slice(0, 3).map(
+      (entry) => `Funcionalidade: ${entry.feature_module} - ${entry.functionality}
 Ação Rápida: ${entry.quick_action}
-Elementos da Interface: ${entry.ui_elements_pt.join(", ")}
+Elementos da Interface: ${entry.ui_elements_pt ? JSON.parse(entry.ui_elements_pt).join(", ") : entry.ui_elements}
 Conteúdo: ${entry.content_text}
 ` + (entry.troubleshooting ? `Solução de Problemas: ${entry.troubleshooting}
 ` : "") + (entry.philosophy_integration ? `Filosofia Modo Caverna: ${entry.philosophy_integration}
 ` : "")
-      ).join("\n---\n");
-      const systemPrompt = `Você é o assistente oficial do Modo Caverna, uma plataforma de transformação pessoal. 
-      Responda com base na documentação fornecida, mantendo o tom motivacional e a filosofia da "alcatéia" (pack de lobos).
-      Use elementos da interface em português e seja prático e direto.
-      Se for uma pergunta "como fazer", forneça passos claros.
-      Se for um problema, foque nas soluções mais prováveis primeiro.`;
-      const userPrompt = `Pergunta: "${query}"
+    ).join("\n---\n");
+    const systemPrompt = `Você é o Capitão Caverna, assistente oficial do Modo Caverna, uma plataforma de transformação pessoal. 
+    Responda com base na documentação fornecida, mantendo o tom motivacional e a filosofia da "alcatéia" (pack de lobos).
+    Use elementos da interface em português e seja prático e direto.
+    Se for uma pergunta "como fazer", forneça passos claros.
+    Se for um problema, foque nas soluções mais prováveis primeiro.
+    Mantenha o espírito de transformação e superação do Modo Caverna.`;
+    const userPrompt = `Pergunta: "${query}"
 
 Documentação do Modo Caverna:
 ${context}`;
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 600
-      });
-      const aiAnswer = completion.choices[0].message.content || "Não consegui gerar uma resposta baseada na documentação disponível.";
-      return c2.json({
-        answer: aiAnswer,
-        searchResults: searchResponse,
-        intent: searchResponse.intent,
-        suggestions: searchResponse.suggestions
-      });
-    } else {
-      return c2.json({
-        answer: "Não encontrei informações específicas sobre isso na documentação do Modo Caverna. Você pode tentar reformular sua pergunta ou entrar em contato com o suporte.",
-        searchResults: searchResponse,
-        intent: searchResponse.intent,
-        suggestions: ["login", "desafio caverna", "rituais", "comunidade", "suporte"]
-      });
-    }
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 600
+    });
+    const aiAnswer = completion.choices[0].message.content || "Não consegui gerar uma resposta baseada na documentação disponível.";
+    return c2.json({
+      answer: aiAnswer,
+      searchResults: {
+        results: response.results,
+        total_results: response.results.length,
+        response_time_ms: 0
+      },
+      intent: "search_completed",
+      suggestions: ["como fazer login", "desafio caverna", "configurar rituais"]
+    });
   } catch (error) {
     console.error("Enhanced search error:", error);
     return c2.json({
@@ -28492,6 +29248,9 @@ app.get("/api/v1/images/user/:userId", authMiddleware, async (c2) => {
   }
 });
 app.delete("/api/v1/images/:imageId", authMiddleware, adminMiddleware, async (c2) => {
+  if (!isImageServiceAvailable(c2.env)) {
+    return imageServiceUnavailableResponse();
+  }
   const imageId = c2.req.param("imageId");
   try {
     const database = new DatabaseLayer(c2.env.DB);
@@ -28762,6 +29521,9 @@ const checkRateLimit = (userId) => {
   return { allowed: true };
 };
 app.post("/api/v1/images/generate", authMiddleware, zValidator("json", ImageGenerationRequestSchema), async (c2) => {
+  if (!isImageServiceAvailable(c2.env)) {
+    return imageServiceUnavailableResponse();
+  }
   const user = c2.get("user");
   const { params } = c2.req.valid("json");
   try {
@@ -28961,6 +29723,9 @@ app.get("/api/v1/images/user/:userId", authMiddleware, async (c2) => {
   }
 });
 app.delete("/api/v1/images/:imageId", authMiddleware, async (c2) => {
+  if (!isImageServiceAvailable(c2.env)) {
+    return imageServiceUnavailableResponse();
+  }
   const user = c2.get("user");
   const imageId = c2.req.param("imageId");
   try {
@@ -28984,6 +29749,9 @@ app.delete("/api/v1/images/:imageId", authMiddleware, async (c2) => {
   }
 });
 app.post("/api/v1/admin/images/bulk-delete", authMiddleware, adminMiddleware, async (c2) => {
+  if (!isImageServiceAvailable(c2.env)) {
+    return imageServiceUnavailableResponse();
+  }
   const body = await c2.req.json();
   const { imageIds } = body;
   if (!Array.isArray(imageIds) || imageIds.length === 0) {
@@ -29466,6 +30234,9 @@ app.get("/api/v1/admin/security/audit", authMiddleware, async (c2) => {
   const user = c2.get("user");
   if (!user.isAdmin) {
     return c2.json({ error: "Insufficient permissions" }, 403);
+  }
+  if (!isImageServiceAvailable(c2.env)) {
+    return imageServiceUnavailableResponse();
   }
   try {
     const limit2 = parseInt(c2.req.query("limit") || "50");

@@ -407,7 +407,7 @@ export class ContextualImageEngine {
     }
   }
 
-  private selectOptimalFootwear(outfit: string, levelConfig: any): string {
+  private selectOptimalFootwear(_outfit: string, levelConfig: any): string {
     // Match footwear to outfit and level - Official Modo Caverna progression
     const levelComplexity = levelConfig.complexity;
     // Note: stateOfMind available for future character expression features
@@ -523,7 +523,7 @@ export class ContextualImageEngine {
     return 'stagnant';
   }
 
-  private checkStreakStatus(userId: string, activity: any[]): UserEmotionalContext['streakStatus'] {
+  private checkStreakStatus(_userId: string, activity: any[]): UserEmotionalContext['streakStatus'] {
     // Check user's streak status from recent activity
     // This would integrate with actual streak tracking system
     const recentDays = 7;
@@ -601,7 +601,7 @@ export class ContextualImageEngine {
     };
   }
 
-  private extractImageStyle(imageId: string): string | undefined {
+  private extractImageStyle(_imageId: string): string | undefined {
     // Extract style characteristics from image ID or metadata
     // This would integrate with actual image metadata system
     return undefined;

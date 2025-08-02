@@ -8,7 +8,7 @@ import {
   type ImageGenerationResponse,
   type GeneratedImageRecord
 } from '../shared/types';
-import { EnhancedSearchEngine, type SearchRequest } from '../shared/enhancedSearch';
+import { EnhancedSearchEngine } from '../shared/enhancedSearch';
 import { KnowledgeDataSeeder } from '../shared/knowledgeDataSeeder';
 import { CorrectedKnowledgeSeeder } from '../shared/correctedKnowledgeSeeder';
 import { ContextualImageEngine, type ContextualImageRequest } from '../shared/contextualImageEngine';
@@ -410,7 +410,10 @@ app.all('/api/seed-corrected-data', async (c) => {
     });
   } catch (error) {
     console.error('Error seeding corrected data:', error);
-    return c.json({ error: 'Failed to seed corrected data', details: error.message }, 500);
+    return c.json({ 
+      error: 'Failed to seed corrected data', 
+      details: error instanceof Error ? error.message : 'Unknown error' 
+    }, 500);
   }
 });
 
@@ -657,7 +660,7 @@ function getCurrentTimeContext(): 'morning' | 'afternoon' | 'evening' | 'late_ni
 
 // Original search endpoint for backward compatibility
 app.post('/api/search', zValidator('json', SearchRequestSchema), async (c) => {
-  const { query, language = 'pt', category } = c.req.valid('json');
+  const { query, category } = c.req.valid('json');
   const db = c.env.DB;
 
   try {
@@ -763,9 +766,13 @@ app.post('/api/search', zValidator('json', SearchRequestSchema), async (c) => {
 
     return c.json({
       answer: aiAnswer,
-      searchResults: searchResponse,
-      intent: searchResponse.intent,
-      suggestions: searchResponse.suggestions
+      searchResults: { 
+        results: response.results, 
+        total_results: response.results.length, 
+        response_time_ms: 0 
+      },
+      intent: 'search_completed',
+      suggestions: ['como fazer login', 'desafio caverna', 'configurar rituais']
     });
 
   } catch (error) {
