@@ -28521,8 +28521,33 @@ function getCurrentTimeContext() {
   if (hour >= 18 && hour < 22) return "evening";
   return "late_night";
 }
+async function checkRateLimit(c2, identifier) {
+  try {
+    const key = `rate_limit:${identifier}`;
+    const current = await c2.env.KV?.get(key);
+    const count = current ? parseInt(current) : 0;
+    if (count >= 10) {
+      return false;
+    }
+    await c2.env.KV?.put(key, (count + 1).toString(), { expirationTtl: 60 });
+    return true;
+  } catch (error) {
+    console.warn("Rate limiting check failed, allowing request:", error);
+    return true;
+  }
+}
 app.post("/api/search", zValidator("json", SearchRequestSchema), async (c2) => {
   const { query, category } = c2.req.valid("json");
+  const startTime = Date.now();
+  const clientIP = c2.req.header("CF-Connecting-IP") || c2.req.header("X-Forwarded-For") || "unknown";
+  const rateLimitOk = await checkRateLimit(c2, clientIP);
+  if (!rateLimitOk) {
+    return c2.json({
+      error: "Muitas requisições. Aguarde um momento antes de tentar novamente.",
+      code: "RATE_LIMIT_EXCEEDED",
+      retryAfter: 60
+    }, 429);
+  }
   const db = c2.env.DB;
   try {
     const openai = new OpenAI({
@@ -28598,16 +28623,51 @@ Conteúdo: ${entry.content_text}
 
 Documentação do Modo Caverna:
 ${context}`;
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.3,
-      max_tokens: 600
-    });
-    const aiAnswer = completion.choices[0].message.content || "Não consegui gerar uma resposta baseada na documentação disponível.";
+    let completion;
+    let retryCount = 0;
+    const maxRetries = 3;
+    while (retryCount < maxRetries) {
+      try {
+        completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 600
+        });
+        break;
+      } catch (openaiError) {
+        retryCount++;
+        console.error(`OpenAI API error (attempt ${retryCount}):`, openaiError);
+        if (openaiError.status === 429) {
+          if (retryCount < maxRetries) {
+            const delay = Math.pow(2, retryCount) * 1e3;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            continue;
+          } else {
+            return c2.json({
+              error: "O serviço está temporariamente sobrecarregado. Tente novamente em alguns minutos.",
+              code: "OPENAI_RATE_LIMIT",
+              retryAfter: 300,
+              answer: `Com base na documentação encontrada sobre "${query}", aqui estão as informações disponíveis:
+
+${context.substring(0, 500)}...`,
+              searchResults: {
+                results: response.results,
+                total_results: response.results.length,
+                response_time_ms: Date.now() - startTime
+              }
+            }, 429);
+          }
+        } else if (retryCount >= maxRetries) {
+          throw openaiError;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1e3 * retryCount));
+      }
+    }
+    const aiAnswer = completion?.choices[0]?.message?.content || "Não consegui gerar uma resposta baseada na documentação disponível.";
     return c2.json({
       answer: aiAnswer,
       searchResults: {
@@ -28620,11 +28680,29 @@ ${context}`;
     });
   } catch (error) {
     console.error("Enhanced search error:", error);
+    const responseTime = Date.now() - startTime;
+    if (error.status === 429) {
+      return c2.json({
+        error: "Muitas requisições simultâneas. Aguarde um momento e tente novamente.",
+        code: "RATE_LIMIT_ERROR",
+        retryAfter: 60,
+        answer: "Serviço temporariamente indisponível devido ao alto volume de requisições.",
+        searchResults: { results: [], total_results: 0, response_time_ms: responseTime }
+      }, 429);
+    }
+    if (error.message?.includes("network") || error.message?.includes("timeout")) {
+      return c2.json({
+        error: "Problema de conectividade. Verifique sua conexão e tente novamente.",
+        code: "NETWORK_ERROR",
+        answer: "Não foi possível processar sua pergunta devido a problemas de conectividade.",
+        searchResults: { results: [], total_results: 0, response_time_ms: responseTime }
+      }, 503);
+    }
     return c2.json({
-      answer: "Ocorreu um erro ao processar sua pergunta. Tente novamente em alguns instantes.",
-      searchResults: { results: [], intent: "error", suggestions: [], total_results: 0, response_time_ms: 0 },
-      intent: "error",
-      suggestions: []
+      error: "Ocorreu um erro interno. Nossa equipe foi notificada e está trabalhando na correção.",
+      code: "INTERNAL_ERROR",
+      answer: "Desculpe, não consegui processar sua pergunta no momento. Tente novamente em alguns instantes.",
+      searchResults: { results: [], total_results: 0, response_time_ms: responseTime }
     }, 500);
   }
 });
@@ -28806,84 +28884,6 @@ app.get("/api/search/suggestions", async (c2) => {
         "central caverna"
       ]
     });
-  }
-});
-app.post("/api/search", zValidator("json", SearchRequestSchema), async (c2) => {
-  const { query, language = "en", category } = c2.req.valid("json");
-  const startTime = Date.now();
-  const db = c2.env.DB;
-  const openai = new OpenAI({
-    apiKey: c2.env.OPENAI_API_KEY
-  });
-  try {
-    let sql = `
-      SELECT * FROM knowledge_entries 
-      WHERE (
-        content_text LIKE ? OR 
-        functionality LIKE ? OR 
-        description LIKE ? OR
-        user_questions_en LIKE ? OR
-        user_questions_pt LIKE ?
-      )
-    `;
-    const searchTerm = `%${query}%`;
-    const params = [searchTerm, searchTerm, searchTerm, searchTerm, searchTerm];
-    if (category) {
-      sql += " AND category = ?";
-      params.push(category);
-    }
-    sql += " ORDER BY feature_module ASC LIMIT 10";
-    const result = await db.prepare(sql).bind(...params).all();
-    const relevantEntries = result.results;
-    if (relevantEntries.length === 0) {
-      return c2.json({
-        answer: language === "pt" ? "Desculpe, não encontrei informações sobre isso na documentação do Modo Caverna." : "Sorry, I couldn't find information about that in the Modo Caverna documentation.",
-        relevantEntries: [],
-        responseTime: Date.now() - startTime
-      });
-    }
-    const context = relevantEntries.map(
-      (entry) => `Feature: ${entry.feature_module} - ${entry.functionality}
-Description: ${entry.description}
-UI Elements: ${entry.ui_elements || "N/A"}
-Content: ${entry.content_text}
-`
-    ).join("\n---\n");
-    const systemPrompt = language === "pt" ? `Você é um assistente especializado na documentação do Modo Caverna. Responda perguntas com base apenas nas informações fornecidas. Seja claro, útil e responda em português brasileiro. Se a informação não estiver disponível, diga que não encontrou na documentação.` : `You are an assistant specialized in Modo Caverna documentation. Answer questions based only on the provided information. Be clear, helpful, and respond in English. If information is not available, say you couldn't find it in the documentation.`;
-    const userPrompt = language === "pt" ? `Com base na documentação do Modo Caverna abaixo, responda esta pergunta: "${query}"
-
-Documentação:
-${context}` : `Based on the Modo Caverna documentation below, answer this question: "${query}"
-
-Documentation:
-${context}`;
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.3,
-      max_tokens: 500
-    });
-    const answer = completion.choices[0].message.content || (language === "pt" ? "Não consegui gerar uma resposta." : "Could not generate a response.");
-    const responseTime = Date.now() - startTime;
-    await db.prepare(`
-      INSERT INTO search_sessions (query, response, response_time_ms) 
-      VALUES (?, ?, ?)
-    `).bind(query, answer, responseTime).run();
-    return c2.json({
-      answer,
-      relevantEntries,
-      responseTime
-    });
-  } catch (error) {
-    console.error("Search error:", error);
-    return c2.json({
-      answer: language === "pt" ? "Ocorreu um erro ao processar sua pergunta. Tente novamente." : "An error occurred while processing your question. Please try again.",
-      relevantEntries: [],
-      responseTime: Date.now() - startTime
-    }, 500);
   }
 });
 app.get("/api/auth/google/url", async (c2) => {
@@ -29504,22 +29504,6 @@ app.post("/api/admin/upload-file", authMiddleware, async (c2) => {
     }, 500);
   }
 });
-const rateLimitMap = /* @__PURE__ */ new Map();
-const RATE_LIMIT_WINDOW = 60 * 1e3;
-const RATE_LIMIT_MAX_REQUESTS = 10;
-const checkRateLimit = (userId) => {
-  const now = Date.now();
-  const userLimit = rateLimitMap.get(userId);
-  if (!userLimit || now > userLimit.resetTime) {
-    rateLimitMap.set(userId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
-    return { allowed: true };
-  }
-  if (userLimit.count >= RATE_LIMIT_MAX_REQUESTS) {
-    return { allowed: false, resetTime: userLimit.resetTime };
-  }
-  userLimit.count++;
-  return { allowed: true };
-};
 app.post("/api/v1/images/generate", authMiddleware, zValidator("json", ImageGenerationRequestSchema), async (c2) => {
   if (!isImageServiceAvailable(c2.env)) {
     return imageServiceUnavailableResponse();
@@ -29527,12 +29511,12 @@ app.post("/api/v1/images/generate", authMiddleware, zValidator("json", ImageGene
   const user = c2.get("user");
   const { params } = c2.req.valid("json");
   try {
-    const rateLimitResult = checkRateLimit(user.id);
-    if (!rateLimitResult.allowed) {
+    const rateLimitOk = await checkRateLimit(c2, user.id);
+    if (!rateLimitOk) {
       return c2.json({
         success: false,
         error: "Rate limit exceeded. Please try again later.",
-        retryAfter: rateLimitResult.resetTime
+        retryAfter: 60
       }, 429);
     }
     const promptEngine = new PromptTemplateEngineImpl();

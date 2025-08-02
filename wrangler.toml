@@ -29,8 +29,19 @@ database_id = "1db6219f-6f57-4afb-9db3-3b7520f052d6"
 # bucket_name = "capitao-caverna-images"
 
 [vars]
+# Environment configuration
+ENVIRONMENT = "development"
+MAX_REQUESTS_PER_MINUTE = "10"
+OPENAI_MODEL = "gpt-4o-mini"
+OPENAI_MAX_TOKENS = "600"
+OPENAI_TEMPERATURE = "0.3"
+
+# Rate limiting configuration
+RATE_LIMIT_WINDOW_SECONDS = "60"
+RATE_LIMIT_MAX_REQUESTS = "10"
+
 # Add your environment variables here
-# OPENAI_API_KEY = "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"
+# OPENAI_API_KEY = "your-openai-api-key-here"
 # MINIO_ENDPOINT = "s3.centralcaverna.com"
 # MINIO_ACCESS_KEY = "cavernacentral"
 # MINIO_SECRET_KEY = "Qwertyytrewq1773@"
@@ -42,3 +53,9 @@ database_id = "1db6219f-6f57-4afb-9db3-3b7520f052d6"
 # DALLE_API_KEY = "your-dalle-api-key"
 # STABLE_DIFFUSION_API_KEY = "your-stable-diffusion-api-key"
 # IMAGE_GENERATION_SERVICE = "midjourney" # Options: midjourney, dalle, stable-diffusion
+
+# KV Namespace for rate limiting
+[[kv_namespaces]]
+binding = "KV"
+id = "8417409bb561463bab1ebb667bf4f439"
+preview_id = "3fa2a4157a784408b27c3d36d8979a74"

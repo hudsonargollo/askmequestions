@@ -23,7 +23,7 @@ import {
   getGoogleAuthUrl,
   exchangeGoogleCode,
   getGoogleUserInfo,
-  type User
+  type User 
 } from '../shared/auth';
 import { PromptTemplateEngineImpl } from '../shared/promptTemplateEngineImpl';
 import { AssetStorageManager } from '../shared/assetStorageManager';
@@ -658,43 +658,9 @@ function getCurrentTimeContext(): 'morning' | 'afternoon' | 'evening' | 'late_ni
   return 'late_night';
 }
 
-// Rate limiting helper function
-async function checkRateLimit(c: any, identifier: string): Promise<boolean> {
-  try {
-    const key = `rate_limit:${identifier}`;
-    const current = await c.env.KV?.get(key);
-    const count = current ? parseInt(current) : 0;
-    
-    if (count >= 10) { // 10 requests per minute
-      return false;
-    }
-    
-    await c.env.KV?.put(key, (count + 1).toString(), { expirationTtl: 60 });
-    return true;
-  } catch (error) {
-    console.warn('Rate limiting check failed, allowing request:', error);
-    return true; // Allow request if rate limiting fails
-  }
-}
-
-// Enhanced search endpoint with rate limiting and error handling
+// Original search endpoint for backward compatibility
 app.post('/api/search', zValidator('json', SearchRequestSchema), async (c) => {
   const { query, category } = c.req.valid('json');
-  const startTime = Date.now();
-  
-  // Get client IP for rate limiting
-  const clientIP = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
-  
-  // Check rate limit
-  const rateLimitOk = await checkRateLimit(c, clientIP);
-  if (!rateLimitOk) {
-    return c.json({
-      error: 'Muitas requisições. Aguarde um momento antes de tentar novamente.',
-      code: 'RATE_LIMIT_EXCEEDED',
-      retryAfter: 60
-    }, 429);
-  }
-  
   const db = c.env.DB;
 
   try {
@@ -785,57 +751,17 @@ app.post('/api/search', zValidator('json', SearchRequestSchema), async (c) => {
 
     const userPrompt = `Pergunta: "${query}"\n\nDocumentação do Modo Caverna:\n${context}`;
 
-    // Retry logic for OpenAI API calls
-    let completion;
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    while (retryCount < maxRetries) {
-      try {
-        completion = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.3,
-          max_tokens: 600,
-        });
-        break; // Success, exit retry loop
-      } catch (openaiError: any) {
-        retryCount++;
-        console.error(`OpenAI API error (attempt ${retryCount}):`, openaiError);
-        
-        if (openaiError.status === 429) {
-          // Rate limit error from OpenAI
-          if (retryCount < maxRetries) {
-            const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
-          } else {
-            return c.json({
-              error: 'O serviço está temporariamente sobrecarregado. Tente novamente em alguns minutos.',
-              code: 'OPENAI_RATE_LIMIT',
-              retryAfter: 300,
-              answer: `Com base na documentação encontrada sobre "${query}", aqui estão as informações disponíveis:\n\n${context.substring(0, 500)}...`,
-              searchResults: { 
-                results: response.results, 
-                total_results: response.results.length, 
-                response_time_ms: Date.now() - startTime 
-              }
-            }, 429);
-          }
-        } else if (retryCount >= maxRetries) {
-          // Other errors or max retries reached
-          throw openaiError;
-        }
-        
-        // Wait before retry for other errors
-        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-      }
-    }
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 600,
+    });
 
-    const aiAnswer = completion?.choices[0]?.message?.content || 
+    const aiAnswer = completion.choices[0].message.content || 
       'Não consegui gerar uma resposta baseada na documentação disponível.';
 
     return c.json({
@@ -849,37 +775,13 @@ app.post('/api/search', zValidator('json', SearchRequestSchema), async (c) => {
       suggestions: ['como fazer login', 'desafio caverna', 'configurar rituais']
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Enhanced search error:', error);
-    
-    const responseTime = Date.now() - startTime;
-    
-    // Handle specific error types
-    if (error.status === 429) {
-      return c.json({
-        error: 'Muitas requisições simultâneas. Aguarde um momento e tente novamente.',
-        code: 'RATE_LIMIT_ERROR',
-        retryAfter: 60,
-        answer: 'Serviço temporariamente indisponível devido ao alto volume de requisições.',
-        searchResults: { results: [], total_results: 0, response_time_ms: responseTime }
-      }, 429);
-    }
-    
-    if (error.message?.includes('network') || error.message?.includes('timeout')) {
-      return c.json({
-        error: 'Problema de conectividade. Verifique sua conexão e tente novamente.',
-        code: 'NETWORK_ERROR',
-        answer: 'Não foi possível processar sua pergunta devido a problemas de conectividade.',
-        searchResults: { results: [], total_results: 0, response_time_ms: responseTime }
-      }, 503);
-    }
-    
-    // Generic error
     return c.json({
-      error: 'Ocorreu um erro interno. Nossa equipe foi notificada e está trabalhando na correção.',
-      code: 'INTERNAL_ERROR',
-      answer: 'Desculpe, não consegui processar sua pergunta no momento. Tente novamente em alguns instantes.',
-      searchResults: { results: [], total_results: 0, response_time_ms: responseTime }
+      answer: 'Ocorreu um erro ao processar sua pergunta. Tente novamente em alguns instantes.',
+      searchResults: { results: [], intent: 'error', suggestions: [], total_results: 0, response_time_ms: 0 },
+      intent: 'error',
+      suggestions: []
     }, 500);
   }
 });
@@ -1105,6 +1007,105 @@ app.get('/api/search/suggestions', async (c) => {
 });
 
 // Search endpoint
+app.post('/api/search', zValidator('json', SearchRequestSchema), async (c) => {
+  const { query, language = 'en', category } = c.req.valid('json');
+  const startTime = Date.now();
+
+  const db = c.env.DB;
+  const openai = new OpenAI({
+    apiKey: c.env.OPENAI_API_KEY,
+  });
+
+  try {
+    // Build search query
+    let sql = `
+      SELECT * FROM knowledge_entries 
+      WHERE (
+        content_text LIKE ? OR 
+        functionality LIKE ? OR 
+        description LIKE ? OR
+        user_questions_en LIKE ? OR
+        user_questions_pt LIKE ?
+      )
+    `;
+    
+    const searchTerm = `%${query}%`;
+    const params = [searchTerm, searchTerm, searchTerm, searchTerm, searchTerm];
+
+    if (category) {
+      sql += ' AND category = ?';
+      params.push(category);
+    }
+
+    sql += ' ORDER BY feature_module ASC LIMIT 10';
+
+    const result = await db.prepare(sql).bind(...params).all();
+    const relevantEntries = result.results as any[];
+
+    if (relevantEntries.length === 0) {
+      return c.json({
+        answer: language === 'pt' 
+          ? "Desculpe, não encontrei informações sobre isso na documentação do Modo Caverna."
+          : "Sorry, I couldn't find information about that in the Modo Caverna documentation.",
+        relevantEntries: [],
+        responseTime: Date.now() - startTime
+      });
+    }
+
+    // Create context for AI
+    const context = relevantEntries.map(entry => 
+      `Feature: ${entry.feature_module} - ${entry.functionality}\n` +
+      `Description: ${entry.description}\n` +
+      `UI Elements: ${entry.ui_elements || 'N/A'}\n` +
+      `Content: ${entry.content_text}\n`
+    ).join('\n---\n');
+
+    const systemPrompt = language === 'pt' 
+      ? `Você é um assistente especializado na documentação do Modo Caverna. Responda perguntas com base apenas nas informações fornecidas. Seja claro, útil e responda em português brasileiro. Se a informação não estiver disponível, diga que não encontrou na documentação.`
+      : `You are an assistant specialized in Modo Caverna documentation. Answer questions based only on the provided information. Be clear, helpful, and respond in English. If information is not available, say you couldn't find it in the documentation.`;
+
+    const userPrompt = language === 'pt'
+      ? `Com base na documentação do Modo Caverna abaixo, responda esta pergunta: "${query}"\n\nDocumentação:\n${context}`
+      : `Based on the Modo Caverna documentation below, answer this question: "${query}"\n\nDocumentation:\n${context}`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 500,
+    });
+
+    const answer = completion.choices[0].message.content || 
+      (language === 'pt' ? 'Não consegui gerar uma resposta.' : 'Could not generate a response.');
+
+    const responseTime = Date.now() - startTime;
+
+    // Log search session
+    await db.prepare(`
+      INSERT INTO search_sessions (query, response, response_time_ms) 
+      VALUES (?, ?, ?)
+    `).bind(query, answer, responseTime).run();
+
+    return c.json({
+      answer,
+      relevantEntries,
+      responseTime
+    });
+
+  } catch (error) {
+    console.error('Search error:', error);
+    return c.json({
+      answer: language === 'pt' 
+        ? 'Ocorreu um erro ao processar sua pergunta. Tente novamente.'
+        : 'An error occurred while processing your question. Please try again.',
+      relevantEntries: [],
+      responseTime: Date.now() - startTime
+    }, 500);
+  }
+});
 
 // Authentication endpoints
 // Google OAuth endpoints
@@ -1927,6 +1928,28 @@ app.post('/api/admin/upload-file', authMiddleware, async (c) => {
 // ===== CAPITÃO CAVERNA IMAGE ENGINE API ENDPOINTS =====
 
 // Rate limiting helper (simple in-memory implementation)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per user
+
+const checkRateLimit = (userId: string): { allowed: boolean; resetTime?: number } => {
+  const now = Date.now();
+  const userLimit = rateLimitMap.get(userId);
+  
+  if (!userLimit || now > userLimit.resetTime) {
+    // Reset or create new limit
+    rateLimitMap.set(userId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return { allowed: true };
+  }
+  
+  if (userLimit.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return { allowed: false, resetTime: userLimit.resetTime };
+  }
+  
+  userLimit.count++;
+  return { allowed: true };
+};
+
 // Main image generation endpoint
 app.post('/api/v1/images/generate', authMiddleware, zValidator('json', ImageGenerationRequestSchema), async (c) => {
   // Check if image services are available
@@ -1939,12 +1962,12 @@ app.post('/api/v1/images/generate', authMiddleware, zValidator('json', ImageGene
   
   try {
     // Rate limiting check
-    const rateLimitOk = await checkRateLimit(c, user.id);
-    if (!rateLimitOk) {
+    const rateLimitResult = checkRateLimit(user.id);
+    if (!rateLimitResult.allowed) {
       return c.json({
         success: false,
         error: 'Rate limit exceeded. Please try again later.',
-        retryAfter: 60
+        retryAfter: rateLimitResult.resetTime
       }, 429);
     }
 
