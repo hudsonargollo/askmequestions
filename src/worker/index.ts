@@ -2,12 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from '@hono/zod-validator';
 import { getCookie } from "hono/cookie";
 import OpenAI from 'openai';
-import { 
-  SearchRequestSchema,
-  ImageGenerationRequestSchema,
-  type ImageGenerationResponse,
-  type GeneratedImageRecord
-} from '../shared/types';
+import { SearchRequestSchema, ImageGenerationRequestSchema, type ImageGenerationResponse, type GeneratedImageRecord } from '../shared/types';
 import { EnhancedSearchEngine } from '../shared/enhancedSearch';
 import { KnowledgeDataSeeder } from '../shared/knowledgeDataSeeder';
 import { CorrectedKnowledgeSeeder } from '../shared/correctedKnowledgeSeeder';
